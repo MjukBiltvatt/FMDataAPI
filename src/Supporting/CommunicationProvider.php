@@ -398,7 +398,11 @@ class CommunicationProvider
         $params = ["productInfo" => null];
         $request = [];
         try {
-            $this->callRestAPI($params, false, "GET", $request, null, true); // Throw Exception
+            try {
+                $this->callRestAPI($params, false, "GET", $request, null, true); // Throw Exception
+            } finally {
+                $this->storeToProperties();
+            }
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $returnValue = $this->responseBody->response->productInfo;
             }
@@ -408,8 +412,6 @@ class CommunicationProvider
             } else {
                 throw $e;
             }
-        } finally {
-            $this->storeToProperties();
         }
         return $returnValue;
     }
