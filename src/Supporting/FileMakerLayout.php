@@ -23,6 +23,11 @@ class FileMakerLayout
      */
     private CommunicationProvider|null $restAPI;
     /**
+     * @var null|SessionCoordinator Keeping the SessionCoordinator object.
+     * @ignore
+     */
+    private SessionCoordinator|null $sessionCoordinator;
+    /**
      * @var null|string
      * @ignore
      */
@@ -31,36 +36,79 @@ class FileMakerLayout
     /**
      * FileMakerLayout constructor.
      * @param CommunicationProvider|null $restAPI
+     * @param SessionCoordinator|null $sessionCoordinator
      * @param string $layout
      * @ignore
      */
     public function __construct(CommunicationProvider|null $restAPI,
+                                SessionCoordinator|null    $sessionCoordinator,
                                 string                     $layout)
     {
         $this->restAPI = $restAPI;
+        $this->sessionCoordinator = $sessionCoordinator;
         $this->layout = $layout;
     }
 
     /**
-     * Start a transaction which is a serial calling of any database operations
-     * and log in with the target layout.
+     * Start a communication scope with a shared authenticated session.
+     *
+     * Usually most methods login and logout before and after each database operation.
+     * By calling startCommunication() and endCommunication(), methods between them don't
+     * log in and out every time, and it can expect faster operations.
+     *
+     * When persistent sessions are not enabled, one authenticated session is kept during
+     * the current communication scope.
+     *
+     * When persistent sessions are enabled, a cached session token is used if available.
      * @throws Exception
      */
     public function startCommunication(): void
     {
-        if ($this->restAPI->login()) {
-            $this->restAPI->keepAuth = true;
-        }
+        $this->sessionCoordinator->startCommunication();
     }
 
     /**
-     * Finish a transaction which is a serial calling of any database operations, and logout.
+     * Finish a communication scope and logout.
      * @throws Exception
      */
     public function endCommunication(): void
     {
-        $this->restAPI->keepAuth = false;
-        $this->restAPI->logout();
+        $this->sessionCoordinator->endCommunication();
+    }
+
+    /**
+     * Execute a callback with this FileMakerLayout instance by using the current session handling behavior.
+     *
+     * When persistent sessions are not enabled, the callback is invoked immediately with this instance.
+     *
+     * When persistent sessions are enabled, this method uses the cached session when available.
+     * If FileMaker returns error code 952, the session is refreshed and the callback is retried once.
+     *
+     * Note that the callback can be executed up to two times if retrying is required.
+     *
+     * Example:
+     * <code>
+     * $client = new FMDataAPI(
+     *     solution: 'MySolution',
+     *     user: 'MyUser',
+     *     password: 'MyPassword',
+     *     sessionCache: new ApcuSessionCache(),
+     * );
+     * $result = $client->layout('MyLayout')->withSession(
+     *     fn (FileMakerLayout $layout): FileMakerRelation => $layout->query(
+     *         // do stuff
+     *     )
+     * );
+     * </code>
+     *
+     * @template TReturn
+     * @param callable(FileMakerLayout): TReturn $fn
+     * @return TReturn
+     * @throws Exception Any exception thrown by the callback or the underlying provider.
+     */
+    public function withSession(callable $fn)
+    {
+        return $this->sessionCoordinator->executeWithSessionRetry($fn, $this);
     }
 
     /**
@@ -209,8 +257,11 @@ class FileMakerLayout
             if (!is_null($dateformats)) {
                 $request["dateformats"] = $dateformats;
             }
-            $this->restAPI->callRestAPI($params, true, $method, $request, $headers); // Throw Exception
-            $this->restAPI->storeToProperties();
+            try {
+                $this->restAPI->callRestAPI($params, true, $method, $request, $headers); // Throw Exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $result = $this->restAPI->responseBody;
             $fmrel = null;
             if ($result && $result->response &&
@@ -258,8 +309,11 @@ class FileMakerLayout
             }
             $headers = ["Content-Type" => "application/json"];
             $params = ["layouts" => $this->layout, "records" => $recordId];
-            $this->restAPI->callRestAPI($params, true, "GET", $request, $headers); // Throw Exception
-            $this->restAPI->storeToProperties();
+            try {
+                $this->restAPI->callRestAPI($params, true, "GET", $request, $headers); // Throw Exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $result = $this->restAPI->responseBody;
             $fmrel = null;
             if ($result) {
@@ -308,9 +362,12 @@ class FileMakerLayout
             if (!is_null($dateformats)) {
                 $request["dateformats"] = $dateformats;
             }
-            $this->restAPI->callRestAPI($params, true, "POST", $request, $headers); // Throw Exception
+            try {
+                $this->restAPI->callRestAPI($params, true, "POST", $request, $headers); // Throw Exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $result = $this->restAPI->responseBody;
-            $this->restAPI->storeToProperties();
             $this->restAPI->logout();
             return $result->response->recordId;
         } else {
@@ -337,8 +394,11 @@ class FileMakerLayout
             if (!is_null($script)) {
                 $request = $this->buildScriptParameters($script);
             }
-            $this->restAPI->callRestAPI($params, true, 'POST', $request, $headers); // Throw Exception
-            $this->restAPI->storeToProperties();
+            try {
+                $this->restAPI->callRestAPI($params, true, 'POST', $request, $headers); // Throw Exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $this->restAPI->logout();
         }
     }
@@ -362,8 +422,11 @@ class FileMakerLayout
             if (!is_null($script)) {
                 $request = $this->buildScriptParameters($script);
             }
-            $this->restAPI->callRestAPI($params, true, 'DELETE', $request, $headers); // Throw Exception
-            $this->restAPI->storeToProperties();
+            try {
+                $this->restAPI->callRestAPI($params, true, 'DELETE', $request, $headers); // Throw Exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $this->restAPI->logout();
         }
     }
@@ -414,8 +477,11 @@ class FileMakerLayout
             if ($modId > -1) {
                 $request = array_merge($request, ["modId" => (string)$modId]);
             }
-            $this->restAPI->callRestAPI($params, true, "PATCH", $request, $headers); // Throw exception
-            $this->restAPI->storeToProperties();
+            try {
+                $this->restAPI->callRestAPI($params, true, "PATCH", $request, $headers); // Throw exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $this->restAPI->logout();
         }
     }
@@ -438,8 +504,11 @@ class FileMakerLayout
             $headers = ["Content-Type" => "application/json"];
             $params = ["globals" => null];
             $request = ["globalFields" => $fields];
-            $this->restAPI->callRestAPI($params, true, "PATCH", $request, $headers); // Throw exception
-            $this->restAPI->storeToProperties();
+            try {
+                $this->restAPI->callRestAPI($params, true, "PATCH", $request, $headers); // Throw exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $this->restAPI->logout();
         }
     }
@@ -483,8 +552,11 @@ class FileMakerLayout
             $request .= $CRLF;
             $request .= file_get_contents($filePath);
             $request .= "{$CRLF}{$CRLF}--{$boundary}--{$CRLF}";
-            $this->restAPI->callRestAPI($params, true, "POST", $request, $headers); // Throw Exception
-            $this->restAPI->storeToProperties();
+            try {
+                $this->restAPI->callRestAPI($params, true, "POST", $request, $headers); // Throw Exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $this->restAPI->logout();
         }
     }
@@ -505,9 +577,12 @@ class FileMakerLayout
             $request = [];
             $headers = ["Content-Type" => "application/json"];
             $params = ['layouts' => $this->layout, 'metadata' => null];
-            $this->restAPI->callRestAPI($params, true, 'GET', $request, $headers); // Throw Exception
+            try {
+                $this->restAPI->callRestAPI($params, true, 'GET', $request, $headers); // Throw Exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $result = $this->restAPI->responseBody;
-            $this->restAPI->storeToProperties();
             $this->restAPI->logout();
             $returnValue = $result->response;
         }
@@ -534,9 +609,12 @@ class FileMakerLayout
             $request = [];
             $headers = ["Content-Type" => "application/json"];
             $params = ['layouts' => $this->layout];
-            $this->restAPI->callRestAPI($params, true, 'GET', $request, $headers); // Throw Exception
+            try {
+                $this->restAPI->callRestAPI($params, true, 'GET', $request, $headers); // Throw Exception
+            } finally {
+                $this->restAPI->storeToProperties();
+            }
             $result = $this->restAPI->responseBody;
-            $this->restAPI->storeToProperties();
             $this->restAPI->logout();
             $returnValue = $result->response;
         }

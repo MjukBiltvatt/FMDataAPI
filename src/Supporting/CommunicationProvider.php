@@ -5,6 +5,7 @@ namespace INTERMediator\FileMakerServer\RESTAPI\Supporting;
 use DateTime;
 use Exception;
 use CurlHandle;
+use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
 
 /**
  * Class CommunicationProvider is for internal use to communicate with FileMaker Server.
@@ -148,6 +149,11 @@ class CommunicationProvider
      * @ignore
      */
     public bool $keepAuth = false;
+    /**
+     * @var bool
+     * @ignore
+     */
+    public bool $keepPersistentSession = false;
 
     /**
      * @var bool
@@ -393,7 +399,6 @@ class CommunicationProvider
         $request = [];
         try {
             $this->callRestAPI($params, false, "GET", $request, null, true); // Throw Exception
-            $this->storeToProperties();
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $returnValue = $this->responseBody->response->productInfo;
             }
@@ -403,6 +408,8 @@ class CommunicationProvider
             } else {
                 throw $e;
             }
+        } finally {
+            $this->storeToProperties();
         }
         return $returnValue;
     }
@@ -427,8 +434,11 @@ class CommunicationProvider
         }
         $params = ["databases" => null];
         $request = [];
-        $this->callRestAPI($params, false, "GET", $request, $headers, true); // Throw Exception
-        $this->storeToProperties();
+        try {
+            $this->callRestAPI($params, false, "GET", $request, $headers, true); // Throw Exception
+        } finally {
+            $this->storeToProperties();
+        }
         if ($this->httpStatus == 200 && $this->errorCode == 0) {
             $returnValue = $this->responseBody->response->databases;
         }
@@ -448,8 +458,11 @@ class CommunicationProvider
             $params = ["layouts" => null];
             $request = [];
             $headers = [];
-            $this->callRestAPI($params, true, "GET", $request, $headers); // Throw Exception
-            $this->storeToProperties();
+            try {
+                $this->callRestAPI($params, true, "GET", $request, $headers); // Throw Exception
+            } finally {
+                $this->storeToProperties();
+            }
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $returnValue = $this->responseBody->response->layouts;
             }
@@ -469,8 +482,11 @@ class CommunicationProvider
             $params = ["scripts" => null];
             $request = [];
             $headers = [];
-            $this->callRestAPI($params, true, "GET", $request, $headers); // Throw Exception
-            $this->storeToProperties();
+            try {
+                $this->callRestAPI($params, true, "GET", $request, $headers); // Throw Exception
+            } finally {
+                $this->storeToProperties();
+            }
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $returnValue = $this->responseBody->response->scripts;
             }
@@ -507,8 +523,11 @@ class CommunicationProvider
         $request = [];
         $request["fmDataSource"] = (!is_null($this->fmDataSource)) ? $this->fmDataSource : [];
         try {
-            $this->callRestAPI($params, false, "POST", $request, $headers); // Throw Exception
-            $this->storeToProperties();
+            try {
+                $this->callRestAPI($params, false, "POST", $request, $headers); // Throw Exception
+            } finally {
+                $this->storeToProperties();
+            }
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $this->accessToken = $this->responseBody->response->token;
                 return true;
@@ -528,7 +547,7 @@ class CommunicationProvider
      */
     public function logout(): void
     {
-        if ($this->keepAuth) {
+        if ($this->keepAuth || $this->keepPersistentSession) {
             return;
         }
         $params = ["sessions" => $this->accessToken];

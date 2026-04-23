@@ -81,6 +81,8 @@ FMDataAPI has "composer.json," so you can add your composer.json file in your pr
      wrappers.
 - src/Supporting/**.php
     - The supporting classes for the FMDataAPI class. Perhaps you don't need to create these classes, but you have to handle methods on them.
+- src/PersistentSession/**.php
+    - Classes for persistent session token storage and cache backends.
 - composer.json, composer.lock
     - Composer information files.
 - Sample_results.ipynb
