@@ -68,15 +68,16 @@ class SessionCoordinator
     }
 
     /**
-     * Finish a communication scope and logout.
+     * Finish a communication scope.
      *
      * When persistent sessions are not enabled, the authenticated session for the current
-     * communication scope is ended.
+     * communication scope is ended and the server session is logged out.
      *
-     * When persistent sessions are enabled, the cached session token is cleared and the
-     * current session is logged out.
+     * When persistent sessions are enabled, only the local in-memory state is reset.
+     * The cached token in the persistent store and the FileMaker server session are
+     * left intact so the next PHP request can reuse them.
      *
-     * @throws Exception
+     * @throws Exception Only when the non-persistent logout call fails
      */
     public function endCommunication(): void
     {
