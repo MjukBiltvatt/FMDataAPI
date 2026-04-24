@@ -102,13 +102,38 @@ class SessionCoordinator
     public function endCommunication(): void
     {
         if ($this->sessionStore !== null) {
-            $this->sessionStore->clear();
             $this->restAPI->keepPersistentSession = false;
-        } else {
-            $this->restAPI->keepAuth = false;
+            $this->restAPI->accessToken = null;
+            return;
         }
 
+        $this->restAPI->keepAuth = false;
         $this->restAPI->logout();
+    }
+
+    /**
+     * Execute a callback within a communication scope.
+     *
+     * This method starts a communication scope before invoking the callback and always ends
+     * the communication scope afterward.
+     *
+     * When persistent sessions are enabled, the callback may use a cached session token.
+     *
+     * @template TParam
+     * @template TReturn
+     * @param callable(TParam): TReturn $fn
+     * @param TParam $input
+     * @return TReturn
+     * @throws Exception Any exception thrown by the callback or the underlying provider.
+     */
+    public function withSession(callable $fn, mixed $input)
+    {
+        $this->startCommunication();
+        try {
+            return $fn($input);
+        } finally {
+            $this->endCommunication();
+        }
     }
 
     /**

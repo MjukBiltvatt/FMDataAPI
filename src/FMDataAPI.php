@@ -313,14 +313,12 @@ class FMDataAPI
     }
 
     /**
-     * Execute a callback with this FMDataAPI instance by using the current session handling behavior.
+     * Execute a callback within a communication scope using this FMDataAPI instance.
      *
-     * When persistent sessions are not enabled, the callback is invoked immediately with this instance.
+     * This method starts a communication scope before invoking the callback and always ends
+     * the communication scope afterward.
      *
-     * When persistent sessions are enabled, this method uses the cached session when available.
-     * If FileMaker returns error code 952, the session is refreshed and the callback is retried once.
-     *
-     * Note that the callback can be executed up to two times if retrying is required.
+     * When persistent sessions are enabled, the callback may use a cached session token.
      *
      * Example:
      * <code>
@@ -344,7 +342,7 @@ class FMDataAPI
      */
     public function withSession(callable $fn)
     {
-        return $this->sessionCoordinator->executeWithSessionRetry($fn, $this);
+        return $this->sessionCoordinator->withSession($fn, $this);
     }
 
     /**
