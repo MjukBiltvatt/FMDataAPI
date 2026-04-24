@@ -61,8 +61,8 @@ class SessionCoordinator
     {
         if ($this->sessionStore !== null) {
             try {
-                $cachedToken = $this->sessionStore->get();
-                if ($cachedToken !== false) {
+                $cachedToken = $this->sessionStore->getAndKeepAlive();
+                if ($cachedToken !== null) {
                     $this->restAPI->accessToken = $cachedToken;
                 } else {
                     if ($this->restAPI->login() && $this->restAPI->accessToken !== null) {

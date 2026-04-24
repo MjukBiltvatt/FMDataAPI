@@ -55,6 +55,22 @@ class PersistentSessionStore
     }
 
     /**
+     * Retrieve the cached token and keep the cache entry alive for another TTL period.
+     *
+     * This store renews the cache lifetime by storing the same token value again.
+     *
+     * @return string|null Returns the cached token, or null if the key doesn't exist.
+     */
+    public function getAndKeepAlive(): ?string
+    {
+        $token = $this->get();
+        if ($token !== null) {
+            $this->set($token);
+        }
+        return $token;
+    }
+
+    /**
      * Cache the current session token.
      * @param string $token The session token.
      * @return bool|null Returns the result from the cache backend.
@@ -77,7 +93,7 @@ class PersistentSessionStore
      * Retrieve a cached token.
      * @return string|null Returns the cached token, or null if the key doesn't exist.
      */
-    public function get(): ?string
+    private function get(): ?string
     {
         return $this->cache->get($this->cacheKey());
     }
