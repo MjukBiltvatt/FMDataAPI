@@ -60,16 +60,23 @@ class SessionCoordinator
     public function startCommunication(): void
     {
         if ($this->sessionStore !== null) {
-            try {
-                $cachedToken = $this->sessionStore->getAndKeepAlive();
-                if ($cachedToken !== null) {
-                    $this->restAPI->accessToken = $cachedToken;
-                } else {
-                    if ($this->restAPI->login() && $this->restAPI->accessToken !== null) {
-                        $this->sessionStore->set($this->restAPI->accessToken);
-                    }
-                }
+            $cachedToken = $this->sessionStore->getAndKeepAlive();
+            if ($cachedToken !== null) {
+                $this->restAPI->accessToken = $cachedToken;
                 $this->restAPI->keepPersistentSession = true;
+                return;
+            }
+
+            try {
+                if ($this->restAPI->login() && $this->restAPI->accessToken !== null) {
+                    $this->sessionStore->set($this->restAPI->accessToken);
+                    $this->restAPI->keepPersistentSession = true;
+                    return;
+                }
+
+                $this->sessionStore->clear();
+                $this->restAPI->accessToken = null;
+                $this->restAPI->keepPersistentSession = false;
             } catch (Exception $e) {
                 $this->sessionStore->clear();
                 $this->restAPI->accessToken = null;
@@ -80,7 +87,10 @@ class SessionCoordinator
             try {
                 if ($this->restAPI->login()) {
                     $this->restAPI->keepAuth = true;
+                    return;
                 }
+
+                $this->restAPI->keepAuth = false;
             } catch (Exception $e) {
                 $this->restAPI->keepAuth = false;
                 throw $e;
@@ -184,18 +194,34 @@ class SessionCoordinator
     }
 
     /**
-     * Clear the current persistent session state, log in again, and cache the refreshed session token.
-     * @return bool Returns true if the session was refreshed successfully, or false if re-authentication failed.
+     * Reset the current persistent session state and attempt to establish a new one.
+     *
+     * @return bool Returns true if the persistent session was refreshed successfully, or false if re-authentication failed.
      * @throws Exception
      */
     private function refresh(): bool
     {
         $this->sessionStore->clear();
         $this->restAPI->accessToken = null;
-        if (!$this->restAPI->login() || $this->restAPI->accessToken === null) {
+        $this->restAPI->keepPersistentSession = false;
+
+        try {
+            if ($this->restAPI->login() && $this->restAPI->accessToken !== null) {
+                $this->sessionStore->set($this->restAPI->accessToken);
+                $this->restAPI->keepPersistentSession = true;
+                return true;
+            }
+
+            $this->sessionStore->clear();
+            $this->restAPI->accessToken = null;
+            $this->restAPI->keepPersistentSession = false;
             return false;
+        } catch (Exception $e) {
+            $this->sessionStore->clear();
+            $this->restAPI->accessToken = null;
+            $this->restAPI->keepPersistentSession = false;
+            throw $e;
         }
-        $this->sessionStore->set($this->restAPI->accessToken);
-        return true;
+
     }
 }
