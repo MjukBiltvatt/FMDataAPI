@@ -130,7 +130,7 @@ class SessionCoordinator
     {
         $this->startCommunication();
         try {
-            return $fn($input);
+            return $this->executeWithSessionRetry($fn, $input);
         } finally {
             $this->endCommunication();
         }
@@ -153,7 +153,7 @@ class SessionCoordinator
      * @return TReturn
      * @throws Exception Any exception thrown by the callback or the underlying provider.
      */
-    public function executeWithSessionRetry(callable $fn, mixed $input)
+    private function executeWithSessionRetry(callable $fn, mixed $input)
     {
         if (!$this->restAPI->keepPersistentSession || $this->sessionStore === null) {
             return $fn($input);
