@@ -18,7 +18,7 @@ class ApcuSessionCache implements SessionCacheInterface
 {
     public function __construct()
     {
-        if (!function_exists('apcu_fetch')) {
+        if (!function_exists('apcu_enabled') || !apcu_enabled()) {
             throw new RuntimeException("APCu is required to use ApcuSessionCache.");
         }
     }
