@@ -60,42 +60,11 @@ class SessionCoordinator
     public function startCommunication(): void
     {
         if ($this->sessionStore !== null) {
-            $cachedToken = $this->sessionStore->getAndKeepAlive();
-            if ($cachedToken !== null) {
-                $this->restAPI->accessToken = $cachedToken;
-                $this->restAPI->keepPersistentSession = true;
-                return;
-            }
-
-            try {
-                if ($this->restAPI->login() && $this->restAPI->accessToken !== null) {
-                    $this->sessionStore->set($this->restAPI->accessToken);
-                    $this->restAPI->keepPersistentSession = true;
-                    return;
-                }
-
-                $this->sessionStore->clear();
-                $this->restAPI->accessToken = null;
-                $this->restAPI->keepPersistentSession = false;
-            } catch (Exception $e) {
-                $this->sessionStore->clear();
-                $this->restAPI->accessToken = null;
-                $this->restAPI->keepPersistentSession = false;
-                throw $e;
-            }
-        } else {
-            try {
-                if ($this->restAPI->login()) {
-                    $this->restAPI->keepAuth = true;
-                    return;
-                }
-
-                $this->restAPI->keepAuth = false;
-            } catch (Exception $e) {
-                $this->restAPI->keepAuth = false;
-                throw $e;
-            }
+            $this->startPersistentCommunication();
+            return;
         }
+
+        $this->startNonPersistentCommunication();
     }
 
     /**
@@ -174,7 +143,7 @@ class SessionCoordinator
                 return $fn($input);
             } catch (Exception $e) {
                 if ($this->restAPI->errorCode == 952) {
-                    if (!$this->refresh()) {
+                    if (!$this->refreshPersistentSession()) {
                         throw new Exception("Unable to refresh persistent session.");
                     }
                     return $fn($input);
@@ -185,7 +154,7 @@ class SessionCoordinator
 
         $result = $fn($input);
         if ($this->restAPI->errorCode == 952) {
-            if (!$this->refresh()) {
+            if (!$this->refreshPersistentSession()) {
                 return null;
             }
             return $fn($input);
@@ -194,34 +163,98 @@ class SessionCoordinator
     }
 
     /**
+     * Start a non-persistent authenticated session for the current communication scope.
+     *
+     * @throws Exception
+     */
+    private function startNonPersistentCommunication(): void
+    {
+        try {
+            if ($this->restAPI->login()) {
+                $this->restAPI->keepAuth = true;
+                return;
+            }
+
+            $this->restAPI->keepAuth = false;
+        } catch (Exception $e) {
+            $this->restAPI->keepAuth = false;
+            throw $e;
+        }
+    }
+
+    /**
+     * Start a persistent communication scope by reusing a cached token when available,
+     * or by creating and storing a new persistent session.
+     *
+     * @throws Exception
+     */
+    private function startPersistentCommunication(): void
+    {
+        $cachedToken = $this->sessionStore->getAndKeepAlive();
+        if ($cachedToken !== null) {
+            $this->activatePersistentSession($cachedToken);
+            return;
+        }
+
+        $this->establishPersistentSession();
+    }
+
+    /**
+     * Log in, cache the session token, and activate persistent-session mode.
+     *
+     * On failure, persistent-session state is reset. If login throws, the state is
+     * reset and the exception is rethrown.
+     *
+     * @return bool Returns true if the persistent session was established successfully, or false if login failed.
+     * @throws Exception
+     */
+    private function establishPersistentSession(): bool
+    {
+        try {
+            if (!$this->restAPI->login() || $this->restAPI->accessToken === null) {
+                $this->resetPersistentSessionState();
+                return false;
+            }
+
+            $token = $this->restAPI->accessToken;
+            $this->sessionStore->set($token);
+            $this->activatePersistentSession($token);
+            return true;
+        } catch (Exception $e) {
+            $this->resetPersistentSessionState();
+            throw $e;
+        }
+    }
+
+    /**
+     * Set the active token and enable persistent-session mode.
+     * @param string $token The session token to activate.
+     */
+    private function activatePersistentSession(string $token): void
+    {
+        $this->restAPI->accessToken = $token;
+        $this->restAPI->keepPersistentSession = true;
+    }
+
+    /**
+     * Clear cached and in-memory persistent-session state.
+     */
+    private function resetPersistentSessionState(): void
+    {
+        $this->sessionStore->clear();
+        $this->restAPI->accessToken = null;
+        $this->restAPI->keepPersistentSession = false;
+    }
+
+    /**
      * Reset the current persistent session state and attempt to establish a new one.
      *
      * @return bool Returns true if the persistent session was refreshed successfully, or false if re-authentication failed.
      * @throws Exception
      */
-    private function refresh(): bool
+    private function refreshPersistentSession(): bool
     {
-        $this->sessionStore->clear();
-        $this->restAPI->accessToken = null;
-        $this->restAPI->keepPersistentSession = false;
-
-        try {
-            if ($this->restAPI->login() && $this->restAPI->accessToken !== null) {
-                $this->sessionStore->set($this->restAPI->accessToken);
-                $this->restAPI->keepPersistentSession = true;
-                return true;
-            }
-
-            $this->sessionStore->clear();
-            $this->restAPI->accessToken = null;
-            $this->restAPI->keepPersistentSession = false;
-            return false;
-        } catch (Exception $e) {
-            $this->sessionStore->clear();
-            $this->restAPI->accessToken = null;
-            $this->restAPI->keepPersistentSession = false;
-            throw $e;
-        }
-
+        $this->resetPersistentSessionState();
+        return $this->establishPersistentSession();
     }
 }
