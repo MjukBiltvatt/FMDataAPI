@@ -155,7 +155,7 @@ class SessionCoordinator
         $result = $fn($input);
         if ($this->restAPI->errorCode == 952) {
             if (!$this->refreshPersistentSession()) {
-                return null;
+                return $result;
             }
             return $fn($input);
         }
