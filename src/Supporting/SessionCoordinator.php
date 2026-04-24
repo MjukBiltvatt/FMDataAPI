@@ -65,7 +65,7 @@ class SessionCoordinator
                 if ($cachedToken !== false) {
                     $this->restAPI->accessToken = $cachedToken;
                 } else {
-                    if ($this->restAPI->login()) {
+                    if ($this->restAPI->login() && $this->restAPI->accessToken !== null) {
                         $this->sessionStore->set($this->restAPI->accessToken);
                     }
                 }
@@ -164,7 +164,9 @@ class SessionCoordinator
                 return $fn($input);
             } catch (Exception $e) {
                 if ($this->restAPI->errorCode == 952) {
-                    $this->refresh();
+                    if (!$this->refresh()) {
+                        throw new Exception("Unable to refresh persistent session.");
+                    }
                     return $fn($input);
                 }
                 throw $e;
@@ -173,7 +175,9 @@ class SessionCoordinator
 
         $result = $fn($input);
         if ($this->restAPI->errorCode == 952) {
-            $this->refresh();
+            if (!$this->refresh()) {
+                return null;
+            }
             return $fn($input);
         }
         return $result;
@@ -181,13 +185,17 @@ class SessionCoordinator
 
     /**
      * Clear the current persistent session state, log in again, and cache the refreshed session token.
+     * @return bool Returns true if the session was refreshed successfully, or false if re-authentication failed.
      * @throws Exception
      */
-    private function refresh(): void
+    private function refresh(): bool
     {
         $this->sessionStore->clear();
         $this->restAPI->accessToken = null;
-        $this->restAPI->login();
+        if (!$this->restAPI->login() || $this->restAPI->accessToken === null) {
+            return false;
+        }
         $this->sessionStore->set($this->restAPI->accessToken);
+        return true;
     }
 }
