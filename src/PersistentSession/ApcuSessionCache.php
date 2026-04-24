@@ -25,29 +25,31 @@ class ApcuSessionCache implements SessionCacheInterface
 
     /**
      * @param string $key Cache key.
-     * @return string|false Returns the cached token, or false if the key doesn't exist.
+     * @return string|null Returns the cached token, or null if the key doesn't exist.
      */
-    public function get(string $key): string|false
+    public function get(string $key): ?string
     {
         $value = apcu_fetch($key);
-        return is_string($value) ? $value : false;
+        return is_string($value) ? $value : null;
     }
 
     /**
      * @param string $key Cache key.
      * @param string $value Session token.
      * @param int $ttl Time to live in seconds.
+     * @return bool Returns the result from the APCu store operation.
      */
-    public function set(string $key, string $value, int $ttl): void
+    public function set(string $key, string $value, int $ttl): bool
     {
-        apcu_store($key, $value, $ttl);
+        return apcu_store($key, $value, $ttl);
     }
 
     /**
      * @param string $key Cache key.
+     * @return bool Returns the result from the APCu delete operation.
      */
-    public function delete(string $key): void
+    public function delete(string $key): bool
     {
-        apcu_delete($key);
+        return apcu_delete($key);
     }
 }

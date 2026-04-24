@@ -57,25 +57,27 @@ class PersistentSessionStore
     /**
      * Cache the current session token.
      * @param string $token The session token.
+     * @return bool|null Returns the result from the cache backend.
      */
-    public function set(string $token): void
+    public function set(string $token): ?bool
     {
-        $this->cache->set($this->cacheKey(), $token, self::TOKEN_TTL);
+        return $this->cache->set($this->cacheKey(), $token, self::TOKEN_TTL);
     }
 
     /**
      * Clear the cached session token.
+     * @return bool|null Returns the result from the cache backend.
      */
-    public function clear(): void
+    public function clear(): ?bool
     {
-        $this->cache->delete($this->cacheKey());
+        return $this->cache->delete($this->cacheKey());
     }
 
     /**
      * Retrieve a cached token.
-     * @return string|false Returns the cached token, or false if the key doesn't exist.
+     * @return string|null Returns the cached token, or null if the key doesn't exist.
      */
-    public function get(): string|false
+    public function get(): ?string
     {
         return $this->cache->get($this->cacheKey());
     }
