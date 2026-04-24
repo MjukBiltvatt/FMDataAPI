@@ -67,11 +67,11 @@ class FMDataAPI
      * Ex.  [{"database"=>"<databaseName>", "username"=>"<username>", "password"=>"<password>"}].
      * If you use OAuth, "oAuthRequestId" and "oAuthIdentifier" keys have to be specified.
      * @param boolean $isUnitTest If it's set to true, the communication provider just works locally.
-     * @param SessionCacheInterface|null $sessionCache Cache backend for persistent sessions.
+     * @param SessionCacheInterface|null $sessionCache $sessionCache Cache backend for persistent sessions.
      * This stores the authentication token used for persistent session reuse.
      * If omitted, persistent session caching is disabled and the library keeps the normal login/logout behavior.
-     * If specified, the startCommunication(), endCommunication() and withSession() methods can reuse
-     * session tokens between requests.
+     * If specified, the host value is used as the token scope and the startCommunication(),
+     * endCommunication(), and withSession() methods can reuse session tokens between requests.
      */
     public function __construct(string      $solution,
                                 string      $user,
@@ -94,7 +94,8 @@ class FMDataAPI
 
         $sessionStore = null;
         if ($sessionCache !== null) {
-            $sessionStore = new PersistentSessionStore($sessionCache, $solution, $user);
+            $scope = $host ?? '';
+            $sessionStore = new PersistentSessionStore($sessionCache, $solution, $user, $scope);
         }
 
         $this->sessionCoordinator = new SessionCoordinator($this->provider, $sessionStore);
