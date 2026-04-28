@@ -5,7 +5,6 @@ namespace INTERMediator\FileMakerServer\RESTAPI\Supporting;
 use DateTime;
 use Exception;
 use CurlHandle;
-use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
 
 /**
  * Class CommunicationProvider is for internal use to communicate with FileMaker Server.
