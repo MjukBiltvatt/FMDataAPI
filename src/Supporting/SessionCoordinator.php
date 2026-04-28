@@ -97,13 +97,13 @@ class SessionCoordinator
     public function endCommunication(): void
     {
         $this->inCommunicationScope = false;
+        $this->restAPI->keepAuth = false;
 
         if ($this->sessionStore !== null) {
             $this->endPersistentCommunication();
             return;
         }
 
-        $this->restAPI->keepAuth = false;
         $this->restAPI->logout();
     }
 
@@ -307,7 +307,8 @@ class SessionCoordinator
             if ($this->sessionStore->set($token) === false) {
                 // Cache write failed — reset and degrade gracefully to
                 // non-persistent keepAuth behavior for this request
-                $this->resetPersistentSessionState();
+                $this->sessionStore->clear();
+                $this->restAPI->keepPersistentSession = false;
                 $this->restAPI->keepAuth = true;
                 return false;
             }
