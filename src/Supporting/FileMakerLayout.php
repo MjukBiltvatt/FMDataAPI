@@ -105,7 +105,7 @@ class FileMakerLayout
      * @return TReturn
      * @throws Exception Any exception thrown by the callback or the underlying provider.
      */
-    public function withSession(callable $fn)
+    public function withSession(callable $fn): mixed
     {
         return $this->sessionCoordinator->withSession($fn, $this);
     }
