@@ -305,8 +305,10 @@ class SessionCoordinator
             $token = $this->restAPI->accessToken;
 
             if ($this->sessionStore->set($token) === false) {
-                // Cache write failed — reset and degrade gracefully to
-                // non-persistent keepAuth behavior for this request
+                // Cache write failed. Clear the store and fall back to keepAuth for this
+                // request. The coordinator still takes the persistent cleanup path at
+                // endCommunication(), where the orphaned token is logged out via the
+                // token-mismatch branch in endPersistentCommunication().
                 $this->sessionStore->clear();
                 $this->restAPI->keepPersistentSession = false;
                 $this->restAPI->keepAuth = true;
