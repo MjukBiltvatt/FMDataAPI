@@ -325,10 +325,14 @@ class FMDataAPI
     /**
      * Execute a callback within a communication scope using this FMDataAPI instance.
      *
-     * This method starts a communication scope before invoking the callback and always ends
-     * the communication scope afterward.
+     * If a communication scope is already active (via startCommunication()), the callback
+     * is executed within that scope without opening or closing it. Otherwise, a new
+     * communication scope is opened and always closed afterward, even if the callback throws.
      *
-     * When persistent sessions are enabled, the callback may use a cached session token.
+     * When persistent sessions are enabled and FileMaker returns error code 952
+     * (invalid or expired token), the session is refreshed and the callback is retried
+     * once automatically. This means the callback may be invoked up to two times —
+     * ensure it has no side effects that should only happen once (such as creating records).
      *
      * Example:
      * <code>

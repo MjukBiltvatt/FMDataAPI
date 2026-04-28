@@ -116,8 +116,10 @@ class SessionCoordinator
      * closed afterward even if the callback throws.
      *
      * When persistent sessions are enabled, the callback may use a cached session token.
-     * If FileMaker returns error code 952, the session is refreshed and the callback is
-     * retried once automatically.
+     * If FileMaker returns error code 952 (invalid or expired token), the session is
+     * refreshed and the callback is retried once automatically. This means the callback
+     * may be invoked up to two times — ensure it has no side effects that should only
+     * happen once (such as creating records).
      *
      * @template TParam
      * @template TReturn
