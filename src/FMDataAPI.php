@@ -94,7 +94,16 @@ class FMDataAPI
 
         $sessionStore = null;
         if ($sessionCache !== null) {
-            $scope = $host ?? '';
+            if ($host === 'localserver') {
+                $scope = 'http://127.0.0.1:3000';
+            } else {
+                $scope = sprintf(
+                    '%s://%s:%d',
+                    $protocol ?? 'https',
+                    $host ?? '127.0.0.1',
+                    $port ?? 443
+                );
+            }
             $sessionStore = new PersistentSessionStore($sessionCache, $solution, $user, $scope);
         }
 
