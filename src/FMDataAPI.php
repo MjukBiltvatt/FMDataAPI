@@ -2,10 +2,13 @@
 
 namespace INTERMediator\FileMakerServer\RESTAPI;
 
+use Exception;
+use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\SessionCacheInterface;
+use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
+use INTERMediator\FileMakerServer\RESTAPI\Supporting\CommunicationProvider;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\FileMakerLayout;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\FileMakerRelation;
-use INTERMediator\FileMakerServer\RESTAPI\Supporting\CommunicationProvider;
-use Exception;
+use INTERMediator\FileMakerServer\RESTAPI\Supporting\SessionCoordinator;
 
 /**
  * Class FMDataAPI is the wrapper of The REST API in Claris FileMaker Server and FileMaker Cloud for AWS.
@@ -39,6 +42,12 @@ class FMDataAPI
     private CommunicationProvider|null $provider;
 
     /**
+     * @var SessionCoordinator Keeping the SessionCoordinator object.
+     * @ignore
+     */
+    private SessionCoordinator $sessionCoordinator;
+
+    /**
      * FMDataAPI constructor. If you want to activate OAuth authentication, $user and $password are set as
      * oAuthRequestId and oAuthIdentifier. Moreover, call useOAuth method before accessing layouts.
      * @param string $solution The database file name which is just hosting.
@@ -58,6 +67,11 @@ class FMDataAPI
      * Ex.  [{"database"=>"<databaseName>", "username"=>"<username>", "password"=>"<password>"}].
      * If you use OAuth, "oAuthRequestId" and "oAuthIdentifier" keys have to be specified.
      * @param boolean $isUnitTest If it's set to true, the communication provider just works locally.
+     * @param SessionCacheInterface|null $sessionCache $sessionCache Cache backend for persistent sessions.
+     * This stores the authentication token used for persistent session reuse.
+     * If omitted, persistent session caching is disabled and the library keeps the normal login/logout behavior.
+     * If specified, the host value is used as the token scope and the startCommunication(),
+     * endCommunication(), and withSession() methods can reuse session tokens between requests.
      */
     public function __construct(string      $solution,
                                 string      $user,
@@ -66,7 +80,8 @@ class FMDataAPI
                                 int|null    $port = null,
                                 string|null $protocol = null,
                                 array|null  $fmDataSource = null,
-                                bool        $isUnitTest = false)
+                                bool        $isUnitTest = false,
+                                SessionCacheInterface|null $sessionCache = null)
     {
         if (is_null($password)) {
             $password = "password"; // For testing purpose.
@@ -76,6 +91,23 @@ class FMDataAPI
         } else {
             $this->provider = new Supporting\TestProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource);
         }
+
+        $sessionStore = null;
+        if ($sessionCache !== null) {
+            if ($host === 'localserver') {
+                $scope = 'http://127.0.0.1:3000';
+            } else {
+                $scope = sprintf(
+                    '%s://%s:%d',
+                    $protocol ?? 'https',
+                    $host ?? '127.0.0.1',
+                    $port ?? 443
+                );
+            }
+            $sessionStore = new PersistentSessionStore($sessionCache, $solution, $user, $scope);
+        }
+
+        $this->sessionCoordinator = new SessionCoordinator($this->provider, $sessionStore);
     }
 
     /**
@@ -111,7 +143,7 @@ class FMDataAPI
     public function layout(string $layout_name): FileMakerLayout
     {
         if (!isset($this->layoutTable[$layout_name])) {
-            $this->layoutTable[$layout_name] = new Supporting\FileMakerLayout($this->provider, $layout_name);
+            $this->layoutTable[$layout_name] = new Supporting\FileMakerLayout($this->provider, $this->sessionCoordinator, $layout_name);
         }
         return $this->layoutTable[$layout_name];
     }
@@ -264,33 +296,88 @@ class FMDataAPI
     }
 
     /**
-     * Start a transaction which is a serial calling of multiple database operations before the single authentication.
-     * Usually most methods login and logout before/after the database operation, and so a little bit of time is going to
-     * take.
-     * The startCommunication() login and endCommunication() logout, and methods between them don't log in/out, and
-     * it can expect faster operations.
+     * Start a communication scope with a shared authenticated session.
+     *
+     * Usually most methods login and logout before and after each database operation.
+     * By calling startCommunication() and endCommunication(), methods between them don't
+     * log in and out every time, and it can expect faster operations.
+     *
+     * When persistent sessions are not enabled, one authenticated session is kept during
+     * the current communication scope.
+     *
+     * When persistent sessions are enabled, the cached session token is reused if available.
+     * If there is no cached token, a new session is created and stored.
+     *
+     * If withSession() is called while this scope is active, it will borrow the existing
+     * scope rather than opening its own — the callback runs within this scope and
+     * endCommunication() is not called by withSession(). The caller is still responsible
+     * for closing the scope with endCommunication().
+     *
      * @throws Exception
      */
     public function startCommunication(): void
     {
-        try {
-            if ($this->provider->login()) {
-                $this->provider->keepAuth = true;
-            }
-        } catch (Exception $e) {
-            $this->provider->keepAuth = false;
-            throw $e;
-        }
+        $this->sessionCoordinator->startCommunication();
     }
 
     /**
-     * Finish a transaction which is a serial calling of any database operations, and logout.
+     * Finish a communication scope.
+     *
+     * When persistent sessions are not enabled, the authenticated session for the current
+     * communication scope is ended and the server session is logged out.
+     *
+     * When persistent sessions are enabled, the cached token is renewed if it still matches
+     * the token held by this instance. If another worker has replaced the cached token in
+     * the meantime, only this instance's (now-stale) token is logged out, leaving the
+     * newer cached token intact.
+     *
+     * Note: if withSession() was called while this scope was active, it borrowed the scope
+     * rather than opening its own. This method is still responsible for closing the scope
+     * regardless of how many withSession() calls were made within it.
+     *
      * @throws Exception
      */
     public function endCommunication(): void
     {
-        $this->provider->keepAuth = false;
-        $this->provider->logout();
+        $this->sessionCoordinator->endCommunication();
+    }
+
+    /**
+     * Execute a callback within a communication scope using this FMDataAPI instance.
+     *
+     * If a communication scope is already active (via startCommunication()), the callback
+     * is executed within that scope without opening or closing it — the caller who opened
+     * the scope remains responsible for closing it with endCommunication(). Otherwise, a new
+     * communication scope is opened and always closed afterward, even if the callback throws.
+     *
+     * When persistent sessions are enabled and FileMaker returns error code 952
+     * (invalid or expired token), the session is refreshed and the callback is retried
+     * once automatically. This means the callback may be invoked up to two times —
+     * ensure it has no side effects that should only happen once (such as creating records).
+     *
+     * Example:
+     * <code>
+     * $client = new FMDataAPI(
+     *     solution: 'MySolution',
+     *     user: 'MyUser',
+     *     password: 'MyPassword',
+     *     sessionCache: new ApcuSessionCache(),
+     * );
+     * $result = $client->withSession(
+     *     fn (FMDataAPI $fm): FileMakerRelation => $fm->layout('MyLayout')->query(
+     *         // do stuff
+     *     )
+     * );
+     * </code>
+     *
+     * @template TReturn
+     * @param callable(FMDataAPI): TReturn $fn
+     * @return TReturn
+     * @throws Exception Any exception thrown by the callback or the underlying provider.
+     */
+    public function withSession(callable $fn): mixed
+    {
+        return $this->sessionCoordinator->withSession($fn, $this);
     }
 
     /**
@@ -305,8 +392,11 @@ class FMDataAPI
             $headers = ["Content-Type" => "application/json"];
             $params = ["globals" => null];
             $request = ["globalFields" => $fields];
-            $this->provider->callRestAPI($params, true, "PATCH", $request, $headers); // Throw Exception
-            $this->provider->storeToProperties();
+            try {
+                $this->provider->callRestAPI($params, true, "PATCH", $request, $headers); // Throw Exception
+            } finally {
+                $this->provider->storeToProperties();
+            }
             $this->provider->logout();
         }
     }
