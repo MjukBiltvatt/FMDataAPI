@@ -23,10 +23,10 @@ class FileMakerLayout
      */
     private CommunicationProvider|null $restAPI;
     /**
-     * @var null|SessionCoordinator Keeping the SessionCoordinator object.
+     * @var SessionCoordinator Keeping the SessionCoordinator object.
      * @ignore
      */
-    private SessionCoordinator|null $sessionCoordinator;
+    private SessionCoordinator $sessionCoordinator;
     /**
      * @var null|string
      * @ignore
@@ -36,12 +36,12 @@ class FileMakerLayout
     /**
      * FileMakerLayout constructor.
      * @param CommunicationProvider|null $restAPI
-     * @param SessionCoordinator|null $sessionCoordinator
+     * @param SessionCoordinator $sessionCoordinator
      * @param string $layout
      * @ignore
      */
     public function __construct(CommunicationProvider|null $restAPI,
-                                SessionCoordinator|null    $sessionCoordinator,
+                                SessionCoordinator         $sessionCoordinator,
                                 string                     $layout)
     {
         $this->restAPI = $restAPI;
