@@ -68,6 +68,12 @@ class SessionCoordinator
      *
      * When persistent sessions are enabled, the cached session token is reused if available.
      * If there is no cached token, a new session is created and stored.
+     *
+     * If withSession() is called while this scope is active, it will borrow the existing
+     * scope rather than opening its own — the callback runs within this scope and
+     * endCommunication() is not called by withSession(). The caller is still responsible
+     * for closing the scope with endCommunication().
+     *
      * @throws Exception
      */
     public function startCommunication(): void
@@ -92,7 +98,11 @@ class SessionCoordinator
      * the meantime, only this instance's (now-stale) token is logged out, leaving the
      * newer cached token intact.
      *
-     * @throws Exception Only when the logout call fails.
+     * Note: if withSession() was called while this scope was active, it borrowed the scope
+     * rather than opening its own. This method is still responsible for closing the scope
+     * regardless of how many withSession() calls were made within it.
+     *
+     * @throws Exception
      */
     public function endCommunication(): void
     {
@@ -111,9 +121,9 @@ class SessionCoordinator
      * Execute a callback within a communication scope.
      *
      * If a communication scope is already active (via startCommunication()), the callback
-     * is executed within that scope without opening or closing it. Otherwise, a new
-     * communication scope is opened, the callback is executed, and the scope is always
-     * closed afterward even if the callback throws.
+     * is executed within that scope without opening or closing it — the caller who opened
+     * the scope remains responsible for closing it with endCommunication(). Otherwise, a new
+     * communication scope is opened and always closed afterward, even if the callback throws.
      *
      * When persistent sessions are enabled, the callback may use a cached session token.
      * If FileMaker returns error code 952 (invalid or expired token), the session is

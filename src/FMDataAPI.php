@@ -305,7 +305,14 @@ class FMDataAPI
      * When persistent sessions are not enabled, one authenticated session is kept during
      * the current communication scope.
      *
-     * When persistent sessions are enabled, a cached session token is used if available.
+     * When persistent sessions are enabled, the cached session token is reused if available.
+     * If there is no cached token, a new session is created and stored.
+     *
+     * If withSession() is called while this scope is active, it will borrow the existing
+     * scope rather than opening its own — the callback runs within this scope and
+     * endCommunication() is not called by withSession(). The caller is still responsible
+     * for closing the scope with endCommunication().
+     *
      * @throws Exception
      */
     public function startCommunication(): void
@@ -314,7 +321,20 @@ class FMDataAPI
     }
 
     /**
-     * Finish a communication scope and logout.
+     * Finish a communication scope.
+     *
+     * When persistent sessions are not enabled, the authenticated session for the current
+     * communication scope is ended and the server session is logged out.
+     *
+     * When persistent sessions are enabled, the cached token is renewed if it still matches
+     * the token held by this instance. If another worker has replaced the cached token in
+     * the meantime, only this instance's (now-stale) token is logged out, leaving the
+     * newer cached token intact.
+     *
+     * Note: if withSession() was called while this scope was active, it borrowed the scope
+     * rather than opening its own. This method is still responsible for closing the scope
+     * regardless of how many withSession() calls were made within it.
+     *
      * @throws Exception
      */
     public function endCommunication(): void
@@ -326,7 +346,8 @@ class FMDataAPI
      * Execute a callback within a communication scope using this FMDataAPI instance.
      *
      * If a communication scope is already active (via startCommunication()), the callback
-     * is executed within that scope without opening or closing it. Otherwise, a new
+     * is executed within that scope without opening or closing it — the caller who opened
+     * the scope remains responsible for closing it with endCommunication(). Otherwise, a new
      * communication scope is opened and always closed afterward, even if the callback throws.
      *
      * When persistent sessions are enabled and FileMaker returns error code 952
