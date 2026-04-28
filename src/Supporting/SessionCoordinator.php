@@ -264,6 +264,11 @@ class SessionCoordinator
                 return $fn();
             } catch (Exception $e) {
                 if ($this->restAPI->errorCode === 952) {
+                    // Note: if onRefresh() fails, the provider's errorCode and related properties
+                    // will reflect the failed refresh attempt rather than the original 952 error.
+                    // This is an acceptable tradeoff — a failed refresh is already a degraded state,
+                    // and snapshotting the full provider state to restore it would add disproportionate
+                    // complexity.
                     if (!$onRefresh()) {
                         throw new Exception("Unable to refresh persistent session.", 0, $e);
                     }
@@ -275,6 +280,11 @@ class SessionCoordinator
 
         $result = $fn();
         if ($this->restAPI->errorCode === 952) {
+            // Note: if onRefresh() fails, the provider's errorCode and related properties
+            // will reflect the failed refresh attempt rather than the original 952 error.
+            // This is an acceptable tradeoff — a failed refresh is already a degraded state,
+            // and snapshotting the full provider state to restore it would add disproportionate
+            // complexity.
             if (!$onRefresh()) {
                 return $result;
             }
