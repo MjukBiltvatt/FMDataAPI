@@ -13,32 +13,40 @@ use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionSto
  * session during the current communication scope. When persistent sessions are enabled,
  * it can reuse a cached session token and refresh it when needed.
  *
- * @package INTER-Mediator\FileMakerServer\RESTAPI
+ * @package INTER-Mediator\FileMakerServer\RESTAPI\Supporting
  * @link https://github.com/msyk/FMDataAPI GitHub Repository
  * @version 36
  */
 class SessionCoordinator
 {
     /**
-     * @var CommunicationProvider|null The instance of the communication class.
+     * @var CommunicationProvider The instance of the communication class.
      * @ignore
      */
-    private CommunicationProvider|null $restAPI;
-
+    private CommunicationProvider $restAPI;
     /**
-     * @var null|PersistentSessionStore Store for the cached persistent session token.
+     * @var PersistentSessionStore|null Store for the cached persistent session token, or null if persistent sessions are disabled.
      * @ignore
      */
     private PersistentSessionStore|null $sessionStore;
+    /**
+     * @var bool Indicates whether we are currently in a communication scope.
+     * @ignore
+     */
+    private bool $inCommunicationScope = false;
 
     /**
      * SessionCoordinator constructor.
-     * @param CommunicationProvider|null $restAPI
-     * @param PersistentSessionStore|null $sessionStore
+     * @param CommunicationProvider $restAPI The communication provider.
+     * @param PersistentSessionStore|null $sessionStore Store for the cached persistent
+     *                                                  session token, or null to disable
+     *                                                  persistent sessions.
      * @ignore
      */
-    public function __construct(CommunicationProvider|null  $restAPI,
-                                PersistentSessionStore|null $sessionStore) {
+    public function __construct(
+        CommunicationProvider       $restAPI,
+        PersistentSessionStore|null $sessionStore = null)
+    {
         $this->restAPI = $restAPI;
         $this->sessionStore = $sessionStore;
     }
@@ -61,10 +69,11 @@ class SessionCoordinator
     {
         if ($this->sessionStore !== null) {
             $this->startPersistentCommunication();
-            return;
+        } else {
+            $this->startNonPersistentCommunication();
         }
 
-        $this->startNonPersistentCommunication();
+        $this->inCommunicationScope = true;
     }
 
     /**
@@ -73,17 +82,19 @@ class SessionCoordinator
      * When persistent sessions are not enabled, the authenticated session for the current
      * communication scope is ended and the server session is logged out.
      *
-     * When persistent sessions are enabled, only the local in-memory state is reset.
-     * The cached token in the persistent store and the FileMaker server session are
-     * left intact so the next PHP request can reuse them.
+     * When persistent sessions are enabled, the cached token is renewed if it still matches
+     * the token held by this instance. If another worker has replaced the cached token in
+     * the meantime, only this instance's (now-stale) token is logged out, leaving the
+     * newer cached token intact.
      *
-     * @throws Exception Only when the non-persistent logout call fails
+     * @throws Exception Only when the logout call fails.
      */
     public function endCommunication(): void
     {
+        $this->inCommunicationScope = false;
+
         if ($this->sessionStore !== null) {
-            $this->restAPI->keepPersistentSession = false;
-            $this->restAPI->accessToken = null;
+            $this->endPersistentCommunication();
             return;
         }
 
@@ -94,89 +105,47 @@ class SessionCoordinator
     /**
      * Execute a callback within a communication scope.
      *
-     * This method starts a communication scope before invoking the callback and always ends
-     * the communication scope afterward.
+     * If a communication scope is already active (via startCommunication()), the callback
+     * is executed within that scope without opening or closing it. Otherwise, a new
+     * communication scope is opened, the callback is executed, and the scope is always
+     * closed afterward even if the callback throws.
      *
      * When persistent sessions are enabled, the callback may use a cached session token.
+     * If FileMaker returns error code 952, the session is refreshed and the callback is
+     * retried once automatically.
      *
      * @template TParam
      * @template TReturn
-     * @param callable(TParam): TReturn $fn
-     * @param TParam $input
+     * @param callable(TParam): TReturn $fn The operation to execute within the session scope.
+     * @param TParam $input The value passed as the argument to the callback.
      * @return TReturn
      * @throws Exception Any exception thrown by the callback or the underlying provider.
      */
-    public function withSession(callable $fn, mixed $input)
+    public function withSession(callable $fn, mixed $input): mixed
     {
-        $this->startCommunication();
+        $ownScope = !$this->inCommunicationScope;
+
+        if ($ownScope) {
+            $this->startCommunication();
+        }
+
         try {
-            return $this->executeWithSessionRetry($fn, $input);
+            return $this->executeInScope(fn() => $fn($input));
         } finally {
-            $this->endCommunication();
-        }
-    }
-
-    /**
-     * Execute a callback with the supplied input by using the current session handling behavior.
-     *
-     * When persistent sessions are not enabled, the callback is invoked immediately.
-     *
-     * When persistent sessions are enabled, this method uses the cached session when available.
-     * If FileMaker returns error code 952, the session is refreshed and the callback is retried once.
-     *
-     * Note that the callback can be executed up to two times when retrying after an expired session.
-     *
-     * @template TParam
-     * @template TReturn
-     * @param callable(TParam): TReturn $fn
-     * @param TParam $input
-     * @return TReturn
-     * @throws Exception Any exception thrown by the callback or the underlying provider.
-     */
-    private function executeWithSessionRetry(callable $fn, mixed $input)
-    {
-        if (!$this->restAPI->keepPersistentSession || $this->sessionStore === null) {
-            return $fn($input);
-        }
-
-        if ($this->restAPI->throwExceptionInError) {
-            try {
-                return $fn($input);
-            } catch (Exception $e) {
-                if ($this->restAPI->errorCode == 952) {
-                    if (!$this->refreshPersistentSession()) {
-                        throw new Exception("Unable to refresh persistent session.");
-                    }
-                    return $fn($input);
-                }
-                throw $e;
+            if ($ownScope) {
+                $this->endCommunication();
             }
         }
-
-        $result = $fn($input);
-        if ($this->restAPI->errorCode == 952) {
-            if (!$this->refreshPersistentSession()) {
-                return $result;
-            }
-            return $fn($input);
-        }
-        return $result;
     }
 
     /**
      * Start a non-persistent authenticated session for the current communication scope.
-     *
      * @throws Exception
      */
     private function startNonPersistentCommunication(): void
     {
         try {
-            if ($this->restAPI->login()) {
-                $this->restAPI->keepAuth = true;
-                return;
-            }
-
-            $this->restAPI->keepAuth = false;
+            $this->restAPI->keepAuth = $this->restAPI->login();
         } catch (Exception $e) {
             $this->restAPI->keepAuth = false;
             throw $e;
@@ -184,14 +153,13 @@ class SessionCoordinator
     }
 
     /**
-     * Start a persistent communication scope by reusing a cached token when available,
+     * Start a persistent communication scope by reusing a cached token when available
      * or by creating and storing a new persistent session.
-     *
      * @throws Exception
      */
     private function startPersistentCommunication(): void
     {
-        $cachedToken = $this->sessionStore->getAndKeepAlive();
+        $cachedToken = $this->sessionStore->get();
         if ($cachedToken !== null) {
             $this->activatePersistentSession($cachedToken);
             return;
@@ -201,12 +169,124 @@ class SessionCoordinator
     }
 
     /**
+     * End a persistent communication scope.
+     *
+     * If the token held by this instance still matches the cached token, the cache
+     * entry is renewed for another TTL period. If the tokens differ — meaning another
+     * worker has refreshed the session since this instance started — only this
+     * instance's token is logged out and the cache is left untouched.
+     *
+     * In-memory session state is always cleared regardless of outcome.
+     * @throws Exception
+     */
+    private function endPersistentCommunication(): void
+    {
+        $ourToken = $this->restAPI->accessToken;
+        $cachedToken = $this->sessionStore->get();
+
+        // Always clear in-memory state first
+        $this->restAPI->keepPersistentSession = false;
+        $this->restAPI->accessToken = null;
+
+        if ($ourToken === null) {
+            return;
+        }
+
+        if ($ourToken === $cachedToken) {
+            // Happy path: our token is still the live one, renew it
+            $this->sessionStore->set($ourToken);
+            // if the cache write fails, the token will expire naturally
+        } else {
+            // Another worker refreshed the cache while we were running.
+            // Log out only our own (now-stale) token — don't touch theirs.
+            $this->restAPI->accessToken = $ourToken;
+            $this->restAPI->logout();
+            $this->restAPI->accessToken = null;
+        }
+    }
+
+    /**
+     * Execute a callback with the current session handling behavior.
+     *
+     * When persistent sessions are not enabled, the callback is invoked immediately.
+     * When persistent sessions are enabled, the callback is executed using the cached
+     * session token, retrying once if FileMaker returns error code 952.
+     *
+     * @param callable(): mixed $fn The operation to execute.
+     * @return mixed
+     * @throws Exception Any exception thrown by the callback or the underlying provider.
+     */
+    private function executeInScope(callable $fn): mixed
+    {
+        if ($this->sessionStore === null) {
+            return $fn();
+        }
+
+        return $this->execute(
+            $fn,
+            fn() => $this->refreshPersistentSession()
+        );
+    }
+
+    /**
+     * Execute a callback, retrying once if FileMaker returns error code 952.
+     *
+     * When the provider is configured to throw exceptions on error, a 952 exception
+     * triggers $onRefresh and the callback is retried. If the refresh fails, the
+     * original exception is rethrown wrapped in a new Exception.
+     *
+     * When the provider is not configured to throw exceptions, the error code is
+     * checked after the call returns. If 952 is detected, $onRefresh is called
+     * and the callback is retried. If the refresh fails, the original result is returned.
+     *
+     * Note that the callback may be invoked up to two times when a retry occurs.
+     *
+     * @template TReturn
+     * @param callable(): TReturn $fn The operation to execute.
+     * @param callable(): bool $onRefresh Called when error 952 is detected.
+     *                                    Should re-establish the session and return
+     *                                    true on success or false if re-authentication failed.
+     * @return TReturn
+     * @throws Exception Any exception thrown by the callback, or if the session
+     *                   could not be refreshed when throwExceptionInError is enabled.
+     */
+    private function execute(callable $fn, callable $onRefresh): mixed
+    {
+        if ($this->restAPI->throwExceptionInError) {
+            try {
+                return $fn();
+            } catch (Exception $e) {
+                if ($this->restAPI->errorCode === 952) {
+                    if (!$onRefresh()) {
+                        throw new Exception("Unable to refresh persistent session.", 0, $e);
+                    }
+                    return $fn();
+                }
+                throw $e;
+            }
+        }
+
+        $result = $fn();
+        if ($this->restAPI->errorCode === 952) {
+            if (!$onRefresh()) {
+                return $result;
+            }
+            return $fn();
+        }
+        return $result;
+    }
+
+    /**
      * Log in, cache the session token, and activate persistent-session mode.
      *
-     * On failure, persistent-session state is reset. If login throws, the state is
-     * reset and the exception is rethrown.
+     * If the cache write fails, persistent-session state is reset and the coordinator
+     * falls back to non-persistent keepAuth behavior for the current request.
      *
-     * @return bool Returns true if the persistent session was established successfully, or false if login failed.
+     * On login failure, persistent-session state is reset. If login throws, the
+     * state is reset and the exception is rethrown.
+     *
+     * @return bool Returns true if the persistent session was established successfully,
+     *              or false if login failed or the cache write could not be completed.
      * @throws Exception
      */
     private function establishPersistentSession(): bool
@@ -218,13 +298,33 @@ class SessionCoordinator
             }
 
             $token = $this->restAPI->accessToken;
-            $this->sessionStore->set($token);
+
+            if ($this->sessionStore->set($token) === false) {
+                // Cache write failed — reset and degrade gracefully to
+                // non-persistent keepAuth behavior for this request
+                $this->resetPersistentSessionState();
+                $this->restAPI->keepAuth = true;
+                return false;
+            }
+
             $this->activatePersistentSession($token);
             return true;
         } catch (Exception $e) {
             $this->resetPersistentSessionState();
             throw $e;
         }
+    }
+
+    /**
+     * Reset the current persistent session state and attempt to establish a new one.
+     * @return bool Returns true if the persistent session was refreshed successfully,
+     *              or false if re-authentication failed.
+     * @throws Exception
+     */
+    private function refreshPersistentSession(): bool
+    {
+        $this->resetPersistentSessionState();
+        return $this->establishPersistentSession();
     }
 
     /**
@@ -245,17 +345,5 @@ class SessionCoordinator
         $this->sessionStore->clear();
         $this->restAPI->accessToken = null;
         $this->restAPI->keepPersistentSession = false;
-    }
-
-    /**
-     * Reset the current persistent session state and attempt to establish a new one.
-     *
-     * @return bool Returns true if the persistent session was refreshed successfully, or false if re-authentication failed.
-     * @throws Exception
-     */
-    private function refreshPersistentSession(): bool
-    {
-        $this->resetPersistentSessionState();
-        return $this->establishPersistentSession();
     }
 }
