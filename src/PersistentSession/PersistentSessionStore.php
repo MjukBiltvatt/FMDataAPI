@@ -95,10 +95,6 @@ class PersistentSessionStore
      */
     private function cacheKey(): string
     {
-        return 'fm_token:' . hash('sha256', json_encode([
-            'scope' => $this->scope,
-            'database' => $this->database,
-            'user' => $this->user,
-        ]));
+        return 'fm_token:' . hash('sha256', $this->scope . '|' . $this->database . '|' . $this->user);
     }
 }
