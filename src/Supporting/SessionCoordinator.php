@@ -13,6 +13,11 @@ use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionSto
  * session during the current communication scope. When persistent sessions are enabled,
  * it can reuse a cached session token and refresh it when needed.
  *
+ * Concurrency note: under high concurrency with a cold cache, multiple workers may
+ * each perform a login before one cached token wins. Orphaned tokens are cleaned up
+ * by their owning workers at the end of their communication scope, so no sessions
+ * leak on the FileMaker server, but cold-cache logins are not deduplicated.
+ *
  * @package INTER-Mediator\FileMakerServer\RESTAPI\Supporting
  * @link https://github.com/msyk/FMDataAPI GitHub Repository
  * @version 36
