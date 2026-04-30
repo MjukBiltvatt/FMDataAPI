@@ -417,4 +417,16 @@ class FMDataAPI
     {
         $this->provider->excludeTimeStampInException = $value;
     }
+
+    /**
+     * This property determines whether a failed Data API call fails due to a session invalidation, a new session is
+     * established, and the call is retried once. This retry would be done in a new session, meaning that any FMS
+     * Data API operations that need to run in the same sessions would have unpredictable functionality. An example
+     * of an affected FMS Data API operation is setting and reading global fields.
+     * @param bool $value
+     */
+    public function setRetryOnAccessTokenInvalidation(bool $value = true): void
+    {
+        $this->provider->retryOnAccessTokenInvalidation = $value;
+    }
 }

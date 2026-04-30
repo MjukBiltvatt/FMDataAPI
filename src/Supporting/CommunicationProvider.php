@@ -222,6 +222,17 @@ class CommunicationProvider
     public bool $excludeTimeStampInException = false;
 
     /**
+     * @var bool
+     * @ignore
+     */
+    public bool $retryOnAccessTokenInvalidation = false;
+    /**
+     * @var bool
+     * @ignore
+     */
+    public bool $inCommunicationScope = false;
+
+    /**
      * CommunicationProvider constructor.
      * @param string $solution
      * @param string $user
@@ -274,6 +285,8 @@ class CommunicationProvider
             $this->keepAuth = false;
             throw $e;
         }
+
+        $this->inCommunicationScope = true;
     }
 
     /**
@@ -281,6 +294,7 @@ class CommunicationProvider
      */
     public function endCommunication(): void
     {
+        $this->inCommunicationScope = false;
         $this->keepAuth = false;
         $this->logout();
     }
@@ -529,7 +543,7 @@ class CommunicationProvider
         $request = [];
         $request["fmDataSource"] = (!is_null($this->fmDataSource)) ? $this->fmDataSource : [];
         try {
-            $this->callRestAPI($params, false, "POST", $request, $headers); // Throw Exception
+            $this->callRestAPIWithoutRetry($params, false, "POST", $request, $headers); // Throw Exception
             $this->storeToProperties();
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $this->accessToken = $this->responseBody->response->token;
@@ -554,7 +568,7 @@ class CommunicationProvider
             return;
         }
         $params = ["sessions" => $this->accessToken];
-        $this->callRestAPI($params, true, "DELETE"); // Throw Exception
+        $this->callRestAPIWithoutRetry($params, true, "DELETE"); // Throw Exception
         $this->accessToken = null;
     }
 
@@ -624,13 +638,13 @@ class CommunicationProvider
      * @throws Exception In case of any error, an exception arises.
      * @ignore
      */
-    public function callRestAPI(array             $params,
-                                bool              $isAddToken,
-                                string            $method = 'GET',
-                                string|array|null $request = null,
-                                array|null        $addHeader = null,
-                                bool              $isSystem = false,
-                                string|null|false $directPath = null): void
+    public function callRestAPIWithoutRetry(array             $params,
+                                            bool              $isAddToken,
+                                            string            $method = 'GET',
+                                            string|array|null $request = null,
+                                            array|null        $addHeader = null,
+                                            bool              $isSystem = false,
+                                            string|null|false $directPath = null): void
     {
         $methodLower = strtolower($method);
         $url = $this->getURL($params, $request, $methodLower, $isSystem, $directPath);
@@ -704,6 +718,59 @@ class CommunicationProvider
                 if ($errorCode !== 401) {
                     throw new Exception($description, $errorCode);
                 }
+            }
+        }
+    }
+
+    /**
+     * @param array $params
+     * @param bool $isAddToken
+     * @param string $method
+     * @param string|array|null $request
+     * @param array|null $addHeader
+     * @param bool $isSystem for Metadata
+     * @param string|null|false $directPath
+     * @return void
+     * @throws Exception In case of any error, an exception arises.
+     * @ignore
+     */
+    public function callRestAPI(array             $params,
+                                bool              $isAddToken,
+                                string            $method = 'GET',
+                                string|array|null $request = null,
+                                array|null        $addHeader = null,
+                                bool              $isSystem = false,
+                                string|null|false $directPath = null): void
+    {
+        $caughtException = null;
+
+        try {
+            $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
+        } catch (Exception $e) {
+            if ($this->shouldRetryOnError()) {
+                $caughtException = $e;
+            } else {
+                throw $e;
+            }
+        }
+
+        if ($this->shouldRetryOnError()) {
+            $wasInCommunicationScope = $this->inCommunicationScope;
+
+            $this->inCommunicationScope = false;
+            $this->accessToken = null;
+            $this->keepAuth = false;
+
+            try {
+                if ($wasInCommunicationScope) {
+                    $this->startCommunication();
+                } else {
+                    $this->login();
+                }
+
+                $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
+            } catch (Exception $e) {
+                throw new Exception($e->getMessage(), $e->getCode(), $caughtException);
             }
         }
     }
@@ -854,6 +921,35 @@ class CommunicationProvider
             echo $str;
         }
         return "";
+    }
+
+    /**
+     * @return bool
+     * @ignore
+     */
+    private function shouldRetryOnError(): bool
+    {
+        $errorCode = $this->extractErrorCode();
+        // Error code 952 - Invalid FileMaker Data API token
+        //                  Occurs when the access token has expired or been invalidated.
+        // Error code 112 - "Window is missing" (likely unintentional by the FileMaker Data API)
+        //                  Reproducible when a Data API session is closed externally mid-request,
+        //                  producing a spurious "window missing" error rather than a proper auth failure.
+        return $this->retryOnAccessTokenInvalidation && ($errorCode == 952 || $errorCode == 112);
+    }
+
+    /**
+     * @return int
+     * @ignore
+     */
+    private function extractErrorCode(): int
+    {
+        $errorCode = -1;
+        if (is_object($this->responseBody) && property_exists($this->responseBody, 'messages')) {
+            $result = $this->responseBody->messages[0];
+            $errorCode = property_exists($result, 'code') ? $result->code : -1;
+        }
+        return $errorCode;
     }
 
     /**
