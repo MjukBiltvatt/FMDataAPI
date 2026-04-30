@@ -264,6 +264,28 @@ class CommunicationProvider
     }
 
     /**
+     * @throws Exception In case of any error, an exception arises.
+     */
+    public function startCommunication(): void
+    {
+        try {
+            $this->keepAuth = $this->login();
+        } catch (Exception $e) {
+            $this->keepAuth = false;
+            throw $e;
+        }
+    }
+
+    /**
+     * @throws Exception In case of any error, an exception arises.
+     */
+    public function endCommunication(): void
+    {
+        $this->keepAuth = false;
+        $this->logout();
+    }
+
+    /**
      * @param array $params Array to build the API path. Ex: `["layouts" => null]` or `["sessions" => $this->accessToken]`.
      * @param string|array|null $request The query parameters as `"key" => "value"`.
      * @param string $methodLower The method in lowercase. Ex: `"get"`, `"delete"`, etc.

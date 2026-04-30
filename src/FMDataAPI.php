@@ -273,14 +273,7 @@ class FMDataAPI
      */
     public function startCommunication(): void
     {
-        try {
-            if ($this->provider->login()) {
-                $this->provider->keepAuth = true;
-            }
-        } catch (Exception $e) {
-            $this->provider->keepAuth = false;
-            throw $e;
-        }
+        $this->provider->startCommunication();
     }
 
     /**
@@ -289,8 +282,7 @@ class FMDataAPI
      */
     public function endCommunication(): void
     {
-        $this->provider->keepAuth = false;
-        $this->provider->logout();
+        $this->provider->endCommunication();
     }
 
     /**

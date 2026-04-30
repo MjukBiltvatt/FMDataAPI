@@ -48,9 +48,7 @@ class FileMakerLayout
      */
     public function startCommunication(): void
     {
-        if ($this->restAPI->login()) {
-            $this->restAPI->keepAuth = true;
-        }
+        $this->restAPI->startCommunication();
     }
 
     /**
@@ -59,8 +57,7 @@ class FileMakerLayout
      */
     public function endCommunication(): void
     {
-        $this->restAPI->keepAuth = false;
-        $this->restAPI->logout();
+        $this->restAPI->endCommunication();
     }
 
     /**
