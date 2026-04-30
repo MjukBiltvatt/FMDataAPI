@@ -764,11 +764,14 @@ class CommunicationProvider
             try {
                 if ($wasInCommunicationScope) {
                     $this->startCommunication();
+                    $loggedIn = $this->keepAuth;
                 } else {
-                    $this->login();
+                    $loggedIn = $this->login();
                 }
 
-                $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
+                if ($loggedIn) {
+                    $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
+                }
             } catch (Exception $e) {
                 throw new Exception($e->getMessage(), $e->getCode(), $caughtException);
             }
