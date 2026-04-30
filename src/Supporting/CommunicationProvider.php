@@ -619,6 +619,7 @@ class CommunicationProvider
     }
 
     /**
+     * Sends a REST API request to the FileMaker Data API without any retry logic.
      * @param array $params
      * @param bool $isAddToken
      * @param string $method
@@ -628,6 +629,7 @@ class CommunicationProvider
      * @param string|null|false $directPath
      * @return void
      * @throws Exception In case of any error, an exception arises.
+     * @see callRestAPI() For the recommended entry point with automatic retry on session invalidation.
      * @ignore
      */
     public function callRestAPIWithoutRetry(array             $params,
@@ -715,6 +717,8 @@ class CommunicationProvider
     }
 
     /**
+     * Sends a REST API request to the FileMaker Data API, retrying once on session invalidation if
+     * the retryOnAccessTokenInvalidation property is enabled.
      * @param array $params
      * @param bool $isAddToken
      * @param string $method
@@ -723,7 +727,9 @@ class CommunicationProvider
      * @param bool $isSystem for Metadata
      * @param string|null|false $directPath
      * @return void
-     * @throws Exception In case of any error, an exception arises.
+     * @throws Exception In case of any error, an exception arises. If a retry was attempted,
+     *                   the original exception is available via getPrevious().
+     * @see callRestAPIWithoutRetry() To bypass retry logic entirely.
      * @ignore
      */
     public function callRestAPI(array             $params,
