@@ -284,9 +284,9 @@ class CommunicationProvider
         } catch (Exception $e) {
             $this->keepAuth = false;
             throw $e;
+        } finally {
+            $this->inCommunicationScope = $this->keepAuth;
         }
-
-        $this->inCommunicationScope = true;
     }
 
     /**
