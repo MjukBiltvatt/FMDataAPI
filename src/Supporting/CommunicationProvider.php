@@ -226,11 +226,6 @@ class CommunicationProvider
      * @ignore
      */
     public bool $retryOnAccessTokenInvalidation = false;
-    /**
-     * @var bool
-     * @ignore
-     */
-    public bool $inCommunicationScope = false;
 
     /**
      * CommunicationProvider constructor.
@@ -284,8 +279,6 @@ class CommunicationProvider
         } catch (Exception $e) {
             $this->keepAuth = false;
             throw $e;
-        } finally {
-            $this->inCommunicationScope = $this->keepAuth;
         }
     }
 
@@ -294,7 +287,6 @@ class CommunicationProvider
      */
     public function endCommunication(): void
     {
-        $this->inCommunicationScope = false;
         $this->keepAuth = false;
         $this->logout();
     }
@@ -755,14 +747,13 @@ class CommunicationProvider
         }
 
         if ($this->shouldRetryOnError()) {
-            $wasInCommunicationScope = $this->inCommunicationScope;
+            $wasKeepAuth = $this->keepAuth;
 
-            $this->inCommunicationScope = false;
             $this->accessToken = null;
             $this->keepAuth = false;
 
             try {
-                if ($wasInCommunicationScope) {
+                if ($wasKeepAuth) {
                     $this->startCommunication();
                     $loggedIn = $this->keepAuth;
                 } else {
