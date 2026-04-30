@@ -419,10 +419,13 @@ class FMDataAPI
     }
 
     /**
-     * This property determines whether a failed Data API call fails due to a session invalidation, a new session is
-     * established, and the call is retried once. This retry would be done in a new session, meaning that any FMS
-     * Data API operations that need to run in the same sessions would have unpredictable functionality. An example
-     * of an affected FMS Data API operation is setting and reading global fields.
+     * Controls whether failed Data API calls are automatically retried after session invalidation.
+     *
+     * When enabled and a call fails with error 952 (invalid token) or 112 (window missing), the
+     * current session is discarded, a new session is established, and the call is retried once.
+     *
+     * Warning: The retry runs in a fresh session. Any session-scoped state from the original session
+     * is lost — for example, global fields set before the retry will not carry over.
      * @param bool $value
      */
     public function setRetryOnAccessTokenInvalidation(bool $value = true): void
