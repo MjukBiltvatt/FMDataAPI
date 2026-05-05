@@ -5,6 +5,7 @@ namespace INTERMediator\FileMakerServer\RESTAPI\Supporting;
 use DateTime;
 use Exception;
 use CurlHandle;
+use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
 
 /**
  * Class CommunicationProvider is for internal use to communicate with FileMaker Server.
@@ -228,6 +229,12 @@ class CommunicationProvider
     public bool $retryOnAccessTokenInvalidation = false;
 
     /**
+     * @var PersistentSessionStore|null
+     * @ignore
+     */
+    public PersistentSessionStore|null $sessionStore = null;
+
+    /**
      * CommunicationProvider constructor.
      * @param string $solution
      * @param string $user
@@ -236,6 +243,7 @@ class CommunicationProvider
      * @param string|null $port
      * @param string|null $protocol
      * @param array|null $fmDataSource
+     * @param PersistentSessionStore|null $sessionStore
      * @ignore
      */
     public function __construct(string      $solution,
@@ -244,7 +252,8 @@ class CommunicationProvider
                                 string|null $host = null,
                                 string|null $port = null,
                                 string|null $protocol = null,
-                                array|null  $fmDataSource = null)
+                                array|null  $fmDataSource = null,
+                                PersistentSessionStore|null $sessionStore = null)
     {
         $this->solution = rawurlencode($solution);
         $this->user = $user;
@@ -266,6 +275,7 @@ class CommunicationProvider
             }
         }
         $this->fmDataSource = $fmDataSource;
+        $this->sessionStore = $sessionStore;
         $this->errorCode = -1;
     }
 

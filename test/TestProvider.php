@@ -9,6 +9,7 @@
 namespace INTERMediator\FileMakerServer\RESTAPI\Supporting;
 
 use Exception;
+use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
 
 class TestProvider extends CommunicationProvider
 {
@@ -22,6 +23,7 @@ class TestProvider extends CommunicationProvider
      * @param string|null $port
      * @param string|null $protocol
      * @param array|null $fmDataSource
+     * @param PersistentSessionStore|null $sessionStore
      * @ignore
      */
     public function __construct(string      $solution,
@@ -30,9 +32,10 @@ class TestProvider extends CommunicationProvider
                                 string|null $host = null,
                                 string|null $port = null,
                                 string|null $protocol = null,
-                                array|null  $fmDataSource = null)
+                                array|null  $fmDataSource = null,
+                                PersistentSessionStore|null $sessionStore = null)
     {
-        parent::__construct($solution, $user, $password, $host, $port, $protocol, $fmDataSource);
+        parent::__construct($solution, $user, $password, $host, $port, $protocol, $fmDataSource, $sessionStore);
         $this->buildResponses();
     }
 
