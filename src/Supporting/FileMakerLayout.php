@@ -42,8 +42,18 @@ class FileMakerLayout
     }
 
     /**
-     * Start a transaction which is a serial calling of any database operations
-     * and log in with the target layout.
+     * Start a communication scope with a shared authenticated session.
+     *
+     * Usually most methods login and logout before and after each database operation.
+     * By calling startCommunication() and endCommunication(), methods between them don't
+     * log in and out every time, and it can expect faster operations.
+     *
+     * When persistent sessions are not enabled, one authenticated session is kept during
+     * the current communication scope.
+     *
+     * When persistent sessions are enabled, the cached session token is reused if available.
+     * If there is no cached token, a new session is created and stored.
+     *
      * @throws Exception
      */
     public function startCommunication(): void
@@ -52,7 +62,16 @@ class FileMakerLayout
     }
 
     /**
-     * Finish a transaction which is a serial calling of any database operations, and logout.
+     * Finish a communication scope.
+     *
+     * When persistent sessions are not enabled, the authenticated session for the current
+     * communication scope is ended and the server session is logged out.
+     *
+     * When persistent sessions are enabled, the cached token is renewed if it still matches
+     * the token held by this instance. If another worker has replaced the cached token in
+     * the meantime, only this instance's (now-stale) token is logged out, leaving the
+     * newer cached token intact.
+     *
      * @throws Exception
      */
     public function endCommunication(): void

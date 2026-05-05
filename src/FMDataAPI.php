@@ -281,11 +281,18 @@ class FMDataAPI
     }
 
     /**
-     * Start a transaction which is a serial calling of multiple database operations before the single authentication.
-     * Usually most methods login and logout before/after the database operation, and so a little bit of time is going to
-     * take.
-     * The startCommunication() login and endCommunication() logout, and methods between them don't log in/out, and
-     * it can expect faster operations.
+     * Start a communication scope with a shared authenticated session.
+     *
+     * Usually most methods login and logout before and after each database operation.
+     * By calling startCommunication() and endCommunication(), methods between them don't
+     * log in and out every time, and it can expect faster operations.
+     *
+     * When persistent sessions are not enabled, one authenticated session is kept during
+     * the current communication scope.
+     *
+     * When persistent sessions are enabled, the cached session token is reused if available.
+     * If there is no cached token, a new session is created and stored.
+     *
      * @throws Exception
      */
     public function startCommunication(): void
@@ -294,7 +301,16 @@ class FMDataAPI
     }
 
     /**
-     * Finish a transaction which is a serial calling of any database operations, and logout.
+     * Finish a communication scope.
+     *
+     * When persistent sessions are not enabled, the authenticated session for the current
+     * communication scope is ended and the server session is logged out.
+     *
+     * When persistent sessions are enabled, the cached token is renewed if it still matches
+     * the token held by this instance. If another worker has replaced the cached token in
+     * the meantime, only this instance's (now-stale) token is logged out, leaving the
+     * newer cached token intact.
+     *
      * @throws Exception
      */
     public function endCommunication(): void
@@ -440,6 +456,10 @@ class FMDataAPI
      *
      * When enabled and a call fails with error 952 (invalid token) or 112 (window missing), the
      * current session is discarded, a new session is established, and the call is retried once.
+     *
+     * When a session cache is provided to the constructor, retry on token invalidation is always
+     * active regardless of this setting. This flag only has an effect when no session cache is
+     * configured.
      *
      * Warning: The retry runs in a fresh session. Any session-scoped state from the original session
      * is lost — for example, global fields set before the retry will not carry over.

@@ -293,11 +293,25 @@ class CommunicationProvider
     }
 
     /**
+     * Close the scope. If persistent mode is on and our token is the one currently
+     * advertised in the cache, renew its TTL and leave it alive. Otherwise fall through
+     * to logout(), which will DELETE our (orphan) token at the server.
      * @throws Exception In case of any error, an exception arises.
      */
     public function endCommunication(): void
     {
         $this->keepAuth = false;
+
+        if ($this->sessionStore !== null && $this->accessToken !== null) {
+            if ($this->sessionStore->get() === $this->accessToken) {
+                $this->sessionStore->set($this->accessToken); // renew TTL
+                $this->accessToken = null;
+                return;
+            }
+            // Mismatch: another worker replaced the cached token while we were active.
+            // Our token is an orphan — fall through and DELETE it, but don't touch the cache.
+        }
+
         $this->logout();
     }
 
@@ -528,6 +542,14 @@ class CommunicationProvider
             return true;
         }
 
+        if ($this->sessionStore !== null) {
+            $cached = $this->sessionStore->get();
+            if ($cached !== null) {
+                $this->accessToken = $cached;
+                return true;
+            }
+        }
+
         if ($this->useOAuth) {
             $headers = [
                 "Content-Type" => "application/json",
@@ -549,6 +571,9 @@ class CommunicationProvider
             $this->storeToProperties();
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $this->accessToken = $this->responseBody->response->token;
+                if ($this->sessionStore !== null) {
+                    $this->sessionStore->set($this->accessToken);
+                }
                 return true;
             }
         } catch (Exception $e) {
@@ -559,7 +584,10 @@ class CommunicationProvider
     }
 
     /**
-     *
+     * Tear down the current server-side session, unless either:
+     *   - we're inside a multi-call scope (keepAuth), or
+     *   - this token is the one currently shared via the persistent cache
+     *     (in which case the cache owns its lifecycle).
      * @return void
      * @throws Exception In case of any error, an exception arises.
      * @ignore
@@ -569,9 +597,20 @@ class CommunicationProvider
         if ($this->keepAuth) {
             return;
         }
-        $params = ["sessions" => $this->accessToken];
-        $this->callRestAPIWithoutRetry($params, true, "DELETE"); // Throw Exception
-        $this->accessToken = null;
+        if ($this->accessToken === null) {
+            return;
+        }
+        if ($this->sessionStore !== null && $this->sessionStore->get() === $this->accessToken) {
+            $this->accessToken = null;
+            return;
+        }
+
+        try {
+            $params = ["sessions" => $this->accessToken];
+            $this->callRestAPIWithoutRetry($params, true, "DELETE"); // Throw Exception
+        } finally {
+            $this->accessToken = null;
+        }
     }
 
     /**
