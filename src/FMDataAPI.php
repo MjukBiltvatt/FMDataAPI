@@ -2,6 +2,8 @@
 
 namespace INTERMediator\FileMakerServer\RESTAPI;
 
+use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
+use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\SessionCacheInterface;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\FileMakerLayout;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\FileMakerRelation;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\CommunicationProvider;
@@ -58,6 +60,11 @@ class FMDataAPI
      * Ex.  [{"database"=>"<databaseName>", "username"=>"<username>", "password"=>"<password>"}].
      * If you use OAuth, "oAuthRequestId" and "oAuthIdentifier" keys have to be specified.
      * @param boolean $isUnitTest If it's set to true, the communication provider just works locally.
+     * @param SessionCacheInterface|null $sessionCache Cache backend for persistent sessions.
+     * This stores the authentication token used for persistent session reuse.
+     * If omitted, persistent session caching is disabled and the library keeps the normal login/logout behavior.
+     * If specified, the host is used as the token scope and startCommunication() / endCommunication()
+     * will reuse session tokens between requests.
      */
     public function __construct(string      $solution,
                                 string      $user,
@@ -66,15 +73,25 @@ class FMDataAPI
                                 int|null    $port = null,
                                 string|null $protocol = null,
                                 array|null  $fmDataSource = null,
-                                bool        $isUnitTest = false)
+                                bool        $isUnitTest = false,
+                                SessionCacheInterface|null $sessionCache = null)
     {
         if (is_null($password)) {
             $password = "password"; // For testing purpose.
         }
+
+        $sessionStore = null;
+        if ($sessionCache !== null) {
+            $scope = ($host === 'localserver')
+                ? 'http://127.0.0.1:3000'
+                : sprintf('%s://%s:%d', $protocol ?? 'https', $host ?? '127.0.0.1', $port ?? 443);
+            $sessionStore = new PersistentSessionStore($sessionCache, $solution, $user, $scope);
+        }
+
         if (!$isUnitTest) {
-            $this->provider = new Supporting\CommunicationProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource);
+            $this->provider = new Supporting\CommunicationProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource, $sessionStore);
         } else {
-            $this->provider = new Supporting\TestProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource);
+            $this->provider = new Supporting\TestProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource, $sessionStore);
         }
     }
 
@@ -264,33 +281,41 @@ class FMDataAPI
     }
 
     /**
-     * Start a transaction which is a serial calling of multiple database operations before the single authentication.
-     * Usually most methods login and logout before/after the database operation, and so a little bit of time is going to
-     * take.
-     * The startCommunication() login and endCommunication() logout, and methods between them don't log in/out, and
-     * it can expect faster operations.
+     * Start a communication scope with a shared authenticated session.
+     *
+     * Usually most methods login and logout before and after each database operation.
+     * By calling startCommunication() and endCommunication(), methods between them don't
+     * log in and out every time, and it can expect faster operations.
+     *
+     * When persistent sessions are not enabled, one authenticated session is kept during
+     * the current communication scope.
+     *
+     * When persistent sessions are enabled, the cached session token is reused if available.
+     * If there is no cached token, a new session is created and stored.
+     *
      * @throws Exception
      */
     public function startCommunication(): void
     {
-        try {
-            if ($this->provider->login()) {
-                $this->provider->keepAuth = true;
-            }
-        } catch (Exception $e) {
-            $this->provider->keepAuth = false;
-            throw $e;
-        }
+        $this->provider->startCommunication();
     }
 
     /**
-     * Finish a transaction which is a serial calling of any database operations, and logout.
+     * Finish a communication scope.
+     *
+     * When persistent sessions are not enabled, the authenticated session for the current
+     * communication scope is ended and the server session is logged out.
+     *
+     * When persistent sessions are enabled, the cached token is renewed if it still matches
+     * the token held by this instance. If another worker has replaced the cached token in
+     * the meantime, only this instance's (now-stale) token is logged out, leaving the
+     * newer cached token intact.
+     *
      * @throws Exception
      */
     public function endCommunication(): void
     {
-        $this->provider->keepAuth = false;
-        $this->provider->logout();
+        $this->provider->endCommunication();
     }
 
     /**
@@ -424,5 +449,24 @@ class FMDataAPI
     public function setExcludeTimeStampInException(bool $value = true): void
     {
         $this->provider->excludeTimeStampInException = $value;
+    }
+
+    /**
+     * Controls whether failed Data API calls are automatically retried after session invalidation.
+     *
+     * When enabled and a call fails with error 952 (invalid token) or 112 (window missing), the
+     * current session is discarded, a new session is established, and the call is retried once.
+     *
+     * When a session cache is provided to the constructor, retry on token invalidation is always
+     * active regardless of this setting. This flag only has an effect when no session cache is
+     * configured.
+     *
+     * Warning: The retry runs in a fresh session. Any session-scoped state from the original session
+     * is lost — for example, global fields set before the retry will not carry over.
+     * @param bool $value
+     */
+    public function setRetryOnAccessTokenInvalidation(bool $value = true): void
+    {
+        $this->provider->retryOnAccessTokenInvalidation = $value;
     }
 }

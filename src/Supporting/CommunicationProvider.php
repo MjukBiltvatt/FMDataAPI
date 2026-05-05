@@ -5,6 +5,7 @@ namespace INTERMediator\FileMakerServer\RESTAPI\Supporting;
 use DateTime;
 use Exception;
 use CurlHandle;
+use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
 
 /**
  * Class CommunicationProvider is for internal use to communicate with FileMaker Server.
@@ -222,6 +223,18 @@ class CommunicationProvider
     public bool $excludeTimeStampInException = false;
 
     /**
+     * @var bool
+     * @ignore
+     */
+    public bool $retryOnAccessTokenInvalidation = false;
+
+    /**
+     * @var PersistentSessionStore|null
+     * @ignore
+     */
+    public PersistentSessionStore|null $sessionStore = null;
+
+    /**
      * CommunicationProvider constructor.
      * @param string $solution
      * @param string $user
@@ -230,6 +243,7 @@ class CommunicationProvider
      * @param string|null $port
      * @param string|null $protocol
      * @param array|null $fmDataSource
+     * @param PersistentSessionStore|null $sessionStore
      * @ignore
      */
     public function __construct(string      $solution,
@@ -238,7 +252,8 @@ class CommunicationProvider
                                 string|null $host = null,
                                 string|null $port = null,
                                 string|null $protocol = null,
-                                array|null  $fmDataSource = null)
+                                array|null  $fmDataSource = null,
+                                PersistentSessionStore|null $sessionStore = null)
     {
         $this->solution = rawurlencode($solution);
         $this->user = $user;
@@ -260,7 +275,44 @@ class CommunicationProvider
             }
         }
         $this->fmDataSource = $fmDataSource;
+        $this->sessionStore = $sessionStore;
         $this->errorCode = -1;
+    }
+
+    /**
+     * @throws Exception In case of any error, an exception arises.
+     */
+    public function startCommunication(): void
+    {
+        try {
+            $this->keepAuth = $this->login();
+        } catch (Exception $e) {
+            $this->keepAuth = false;
+            throw $e;
+        }
+    }
+
+    /**
+     * Close the scope. If persistent mode is on and our token is the one currently
+     * advertised in the cache, renew its TTL and leave it alive. Otherwise fall through
+     * to logout(), which will DELETE our (orphan) token at the server.
+     * @throws Exception In case of any error, an exception arises.
+     */
+    public function endCommunication(): void
+    {
+        $this->keepAuth = false;
+
+        if ($this->sessionStore !== null && $this->accessToken !== null) {
+            if ($this->sessionStore->get() === $this->accessToken) {
+                $this->sessionStore->set($this->accessToken); // renew TTL
+                $this->accessToken = null;
+                return;
+            }
+            // Mismatch: another worker replaced the cached token while we were active.
+            // Our token is an orphan — fall through and DELETE it, but don't touch the cache.
+        }
+
+        $this->logout();
     }
 
     /**
@@ -490,6 +542,14 @@ class CommunicationProvider
             return true;
         }
 
+        if ($this->sessionStore !== null) {
+            $cached = $this->sessionStore->get();
+            if ($cached !== null) {
+                $this->accessToken = $cached;
+                return true;
+            }
+        }
+
         if ($this->useOAuth) {
             $headers = [
                 "Content-Type" => "application/json",
@@ -507,10 +567,13 @@ class CommunicationProvider
         $request = [];
         $request["fmDataSource"] = (!is_null($this->fmDataSource)) ? $this->fmDataSource : [];
         try {
-            $this->callRestAPI($params, false, "POST", $request, $headers); // Throw Exception
+            $this->callRestAPIWithoutRetry($params, false, "POST", $request, $headers); // Throw Exception
             $this->storeToProperties();
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $this->accessToken = $this->responseBody->response->token;
+                if ($this->sessionStore !== null) {
+                    $this->sessionStore->set($this->accessToken);
+                }
                 return true;
             }
         } catch (Exception $e) {
@@ -521,7 +584,10 @@ class CommunicationProvider
     }
 
     /**
-     *
+     * Tear down the current server-side session, unless either:
+     *   - we're inside a multi-call scope (keepAuth), or
+     *   - this token is the one currently shared via the persistent cache
+     *     (in which case the cache owns its lifecycle).
      * @return void
      * @throws Exception In case of any error, an exception arises.
      * @ignore
@@ -531,9 +597,20 @@ class CommunicationProvider
         if ($this->keepAuth) {
             return;
         }
-        $params = ["sessions" => $this->accessToken];
-        $this->callRestAPI($params, true, "DELETE"); // Throw Exception
-        $this->accessToken = null;
+        if ($this->accessToken === null) {
+            return;
+        }
+        if ($this->sessionStore !== null && $this->sessionStore->get() === $this->accessToken) {
+            $this->accessToken = null;
+            return;
+        }
+
+        try {
+            $params = ["sessions" => $this->accessToken];
+            $this->callRestAPIWithoutRetry($params, true, "DELETE"); // Throw Exception
+        } finally {
+            $this->accessToken = null;
+        }
     }
 
     /**
@@ -591,6 +668,8 @@ class CommunicationProvider
     }
 
     /**
+     * Sends a REST API request to the FileMaker Data API, retrying once on session invalidation if
+     * the retryOnAccessTokenInvalidation property is enabled.
      * @param array $params
      * @param bool $isAddToken
      * @param string $method
@@ -599,7 +678,9 @@ class CommunicationProvider
      * @param bool $isSystem for Metadata
      * @param string|null|false $directPath
      * @return void
-     * @throws Exception In case of any error, an exception arises.
+     * @throws Exception In case of any error, an exception arises. If a retry was attempted,
+     *                   the original exception is available via getPrevious().
+     * @see callRestAPIWithoutRetry() To bypass retry logic entirely.
      * @ignore
      */
     public function callRestAPI(array             $params,
@@ -609,6 +690,63 @@ class CommunicationProvider
                                 array|null        $addHeader = null,
                                 bool              $isSystem = false,
                                 string|null|false $directPath = null): void
+    {
+        $firstAttempt = null;
+        try {
+            $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
+        } catch (Exception $e) {
+            $firstAttempt = $e;
+        }
+
+        if (!$this->shouldRetryOnTokenError()) {
+            if ($firstAttempt !== null) {
+                throw $firstAttempt;
+            }
+            return;
+        }
+
+        // Token rejected by the server. Clear the cache before re-login so racing workers
+        // don't re-adopt the dead token; preserve the in-process scope across the re-login.
+        if ($this->sessionStore !== null) {
+            $this->sessionStore->clear();
+        }
+        $resumeScope = $this->keepAuth;
+        $this->accessToken = null;
+        $this->keepAuth = false;
+        try {
+            $reauthed = $this->login();
+            if ($reauthed && $resumeScope) {
+                $this->keepAuth = true;
+            }
+            if ($reauthed) {
+                $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
+            }
+        } catch (Exception $retry) {
+            throw new Exception($retry->getMessage(), $retry->getCode(), $firstAttempt);
+        }
+    }
+
+    /**
+     * Sends a REST API request to the FileMaker Data API without any retry logic.
+     * @param array $params
+     * @param bool $isAddToken
+     * @param string $method
+     * @param string|array|null $request
+     * @param array|null $addHeader
+     * @param bool $isSystem for Metadata
+     * @param string|null|false $directPath
+     * @return void
+     * @throws Exception In case of any error, an exception arises.
+     * @see callRestAPI() For the recommended entry point with automatic retry on session invalidation.
+     * @ignore
+     */
+    private function callRestAPIWithoutRetry(array             $params,
+                                            bool              $isAddToken,
+                                            string            $method = 'GET',
+                                            string|array|null $request = null,
+                                            array|null        $addHeader = null,
+                                            bool              $isSystem = false,
+                                            string|null|false $directPath = null): void
     {
         $methodLower = strtolower($method);
         $url = $this->getURL($params, $request, $methodLower, $isSystem, $directPath);
@@ -832,6 +970,39 @@ class CommunicationProvider
             echo $str;
         }
         return "";
+    }
+
+    /**
+     * @return bool
+     * @ignore
+     */
+    private function shouldRetryOnTokenError(): bool
+    {
+        if ($this->sessionStore === null && !$this->retryOnAccessTokenInvalidation) {
+            return false;
+        }
+
+        $errorCode = $this->extractErrorCode();
+        // Error code 952 - Invalid FileMaker Data API token
+        //                  Occurs when the access token has expired or been invalidated.
+        // Error code 112 - "Window is missing" (likely unintentional by the FileMaker Data API)
+        //                  Reproducible when a Data API session is closed externally mid-request,
+        //                  producing a spurious "window missing" error rather than a proper auth failure.
+        return $errorCode === 952 || $errorCode === 112;
+    }
+
+    /**
+     * @return int
+     * @ignore
+     */
+    private function extractErrorCode(): int
+    {
+        $errorCode = -1;
+        if (is_object($this->responseBody) && property_exists($this->responseBody, 'messages')) {
+            $result = $this->responseBody->messages[0];
+            $errorCode = property_exists($result, 'code') ? $result->code : -1;
+        }
+        return $errorCode;
     }
 
     /**
