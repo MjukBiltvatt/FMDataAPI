@@ -668,6 +668,65 @@ class CommunicationProvider
     }
 
     /**
+     * Sends a REST API request to the FileMaker Data API, retrying once on session invalidation if
+     * the retryOnAccessTokenInvalidation property is enabled.
+     * @param array $params
+     * @param bool $isAddToken
+     * @param string $method
+     * @param string|array|null $request
+     * @param array|null $addHeader
+     * @param bool $isSystem for Metadata
+     * @param string|null|false $directPath
+     * @return void
+     * @throws Exception In case of any error, an exception arises. If a retry was attempted,
+     *                   the original exception is available via getPrevious().
+     * @see callRestAPIWithoutRetry() To bypass retry logic entirely.
+     * @ignore
+     */
+    public function callRestAPI(array             $params,
+                                bool              $isAddToken,
+                                string            $method = 'GET',
+                                string|array|null $request = null,
+                                array|null        $addHeader = null,
+                                bool              $isSystem = false,
+                                string|null|false $directPath = null): void
+    {
+        $firstAttempt = null;
+        try {
+            $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
+        } catch (Exception $e) {
+            $firstAttempt = $e;
+        }
+
+        if (!$this->shouldRetryOnTokenError()) {
+            if ($firstAttempt !== null) {
+                throw $firstAttempt;
+            }
+            return;
+        }
+
+        // Token rejected by the server. Clear the cache before re-login so racing workers
+        // don't re-adopt the dead token; preserve the in-process scope across the re-login.
+        if ($this->sessionStore !== null) {
+            $this->sessionStore->clear();
+        }
+        $resumeScope = $this->keepAuth;
+        $this->accessToken = null;
+        $this->keepAuth = false;
+        try {
+            $reauthed = $this->login();
+            if ($reauthed && $resumeScope) {
+                $this->keepAuth = true;
+            }
+            if ($reauthed) {
+                $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
+            }
+        } catch (Exception $retry) {
+            throw new Exception($retry->getMessage(), $retry->getCode(), $firstAttempt);
+        }
+    }
+
+    /**
      * Sends a REST API request to the FileMaker Data API without any retry logic.
      * @param array $params
      * @param bool $isAddToken
@@ -681,7 +740,7 @@ class CommunicationProvider
      * @see callRestAPI() For the recommended entry point with automatic retry on session invalidation.
      * @ignore
      */
-    public function callRestAPIWithoutRetry(array             $params,
+    private function callRestAPIWithoutRetry(array             $params,
                                             bool              $isAddToken,
                                             string            $method = 'GET',
                                             string|array|null $request = null,
@@ -761,65 +820,6 @@ class CommunicationProvider
                 if ($errorCode !== 401) {
                     throw new Exception($description, $errorCode);
                 }
-            }
-        }
-    }
-
-    /**
-     * Sends a REST API request to the FileMaker Data API, retrying once on session invalidation if
-     * the retryOnAccessTokenInvalidation property is enabled.
-     * @param array $params
-     * @param bool $isAddToken
-     * @param string $method
-     * @param string|array|null $request
-     * @param array|null $addHeader
-     * @param bool $isSystem for Metadata
-     * @param string|null|false $directPath
-     * @return void
-     * @throws Exception In case of any error, an exception arises. If a retry was attempted,
-     *                   the original exception is available via getPrevious().
-     * @see callRestAPIWithoutRetry() To bypass retry logic entirely.
-     * @ignore
-     */
-    public function callRestAPI(array             $params,
-                                bool              $isAddToken,
-                                string            $method = 'GET',
-                                string|array|null $request = null,
-                                array|null        $addHeader = null,
-                                bool              $isSystem = false,
-                                string|null|false $directPath = null): void
-    {
-        $caughtException = null;
-
-        try {
-            $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
-        } catch (Exception $e) {
-            if ($this->shouldRetryOnError()) {
-                $caughtException = $e;
-            } else {
-                throw $e;
-            }
-        }
-
-        if ($this->shouldRetryOnError()) {
-            $wasKeepAuth = $this->keepAuth;
-
-            $this->accessToken = null;
-            $this->keepAuth = false;
-
-            try {
-                if ($wasKeepAuth) {
-                    $this->startCommunication();
-                    $loggedIn = $this->keepAuth;
-                } else {
-                    $loggedIn = $this->login();
-                }
-
-                if ($loggedIn) {
-                    $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
-                }
-            } catch (Exception $e) {
-                throw new Exception($e->getMessage(), $e->getCode(), $caughtException);
             }
         }
     }
@@ -976,15 +976,19 @@ class CommunicationProvider
      * @return bool
      * @ignore
      */
-    private function shouldRetryOnError(): bool
+    private function shouldRetryOnTokenError(): bool
     {
+        if ($this->sessionStore === null && !$this->retryOnAccessTokenInvalidation) {
+            return false;
+        }
+
         $errorCode = $this->extractErrorCode();
         // Error code 952 - Invalid FileMaker Data API token
         //                  Occurs when the access token has expired or been invalidated.
         // Error code 112 - "Window is missing" (likely unintentional by the FileMaker Data API)
         //                  Reproducible when a Data API session is closed externally mid-request,
         //                  producing a spurious "window missing" error rather than a proper auth failure.
-        return $this->retryOnAccessTokenInvalidation && ($errorCode == 952 || $errorCode == 112);
+        return $errorCode === 952 || $errorCode === 112;
     }
 
     /**
