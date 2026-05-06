@@ -304,6 +304,9 @@ class CommunicationProvider
 
         if ($this->sessionStore !== null && $this->accessToken !== null) {
             if ($this->sessionStore->get() === $this->accessToken) {
+                // if the cache write fails, the token will expire naturally within 15 minutes.
+                // under sustained cache failures with high concurrency, orphaned tokens could
+                // approach FileMaker's session cap (error 953).
                 $this->sessionStore->set($this->accessToken); // renew TTL
                 $this->accessToken = null;
                 return;
