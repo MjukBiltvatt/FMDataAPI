@@ -52,13 +52,13 @@ class TestProvider extends CommunicationProvider
      * @throws Exception In case of any error, an exception arises.
      * @ignore
      */
-    public function callRestAPI(array             $params,
-                                bool              $isAddToken,
-                                string            $method = 'GET',
-                                array|null|string $request = null,
-                                array|null        $addHeader = null,
-                                bool              $isSystem = false,
-                                string|null|false $directPath = null): void
+    protected function callRestAPIWithoutRetry(array             $params,
+                                               bool              $isAddToken,
+                                               string            $method = 'GET',
+                                               array|null|string $request = null,
+                                               array|null        $addHeader = null,
+                                               bool              $isSystem = false,
+                                               string|null|false $directPath = null): void
     {
         $methodLower = strtolower($method);
         $url = $this->getURL($params, $request, $methodLower);
