@@ -1000,7 +1000,7 @@ class CommunicationProvider
         $errorCode = -1;
         if (is_object($this->responseBody) && property_exists($this->responseBody, 'messages')) {
             $result = $this->responseBody->messages[0];
-            $errorCode = property_exists($result, 'code') ? $result->code : -1;
+            $errorCode = property_exists($result, 'code') ? intval($result->code) : -1;
         }
         return $errorCode;
     }
