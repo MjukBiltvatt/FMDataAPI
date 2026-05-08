@@ -60,10 +60,11 @@ class FMDataAPI
      * If you use OAuth, "oAuthRequestId" and "oAuthIdentifier" keys have to be specified.
      * @param boolean $isUnitTest If it's set to true, the communication provider just works locally.
      * @param AbstractSessionCache|null $sessionCache Cache backend for persistent sessions.
-     * This stores the authentication token used for persistent session reuse.
-     * If omitted, persistent session caching is disabled and the library keeps the normal login/logout behavior.
-     * If specified, the host is used as the token scope and startCommunication() / endCommunication()
-     * will reuse session tokens between requests.
+     * This stores the FileMaker Data API session token for persistent session reuse. If omitted,
+     * persistent session caching is disabled and the library keeps the normal login/logout behavior.
+     * If specified, startCommunication() / endCommunication() will reuse session tokens between requests.
+     * Additionally, {@see self::setRetryOnAccessTokenInvalidation()} is automatically set to true, ensuring
+     * the library re-authenticates and retries the request if the cached token has expired on the FileMaker Server.
      */
     public function __construct(string                    $solution,
                                 string                    $user,
