@@ -1115,7 +1115,7 @@ class CommunicationProvider
     private function cacheKey(): string
     {
         $data = [
-            $this->url,
+            $this->user,
             $this->solution,
             (string)$this->port,
             $this->host,
@@ -1124,6 +1124,6 @@ class CommunicationProvider
 
         $hash = hash('sha256', implode('', $data));
 
-        return "fm_token:$hash";
+        return "fm_token_$hash";
     }
 }
