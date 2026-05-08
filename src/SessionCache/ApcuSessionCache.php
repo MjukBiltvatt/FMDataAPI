@@ -21,6 +21,12 @@ use RuntimeException;
  * only appropriate in environments where server memory access is properly
  * restricted.
  *
+ * Note that cache operations in this implementation are not atomic. While care
+ * has been taken to minimize the risk of race conditions, concurrent requests
+ * sharing the same cache key may occasionally result in redundant
+ * re-authentication against the FileMaker Server. This is considered an
+ * acceptable trade-off given the constraints of the current implementation.
+ *
  * @package INTER-Mediator\FileMakerServer\RESTAPI\SessionCache
  * @link https://github.com/msyk/FMDataAPI GitHub Repository
  * @version 36
