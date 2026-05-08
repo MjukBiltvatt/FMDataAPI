@@ -286,6 +286,15 @@ class CommunicationProvider
     }
 
     /**
+     * Start a communication scope with a shared authenticated session.
+     *
+     * Without a session cache, a new authenticated session is created and kept
+     * for the duration of the current communication scope.
+     *
+     * With a session cache, the cached session token is reused if available,
+     * avoiding a new login against the FileMaker Server. If no cached token is
+     * found, a new session is created and stored in the cache for future reuse.
+     *
      * @throws Exception In case of any error, an exception arises.
      */
     public function startCommunication(): void
@@ -299,9 +308,17 @@ class CommunicationProvider
     }
 
     /**
-     * Close the scope. If persistent mode is on and our token is the one currently
-     * advertised in the cache, renew its TTL and leave it alive. Otherwise fall through
-     * to logout(), which will DELETE our (orphan) token at the server.
+     * Finish a communication scope.
+     *
+     * Without a session cache, the authenticated session is ended and the server
+     * session is logged out.
+     *
+     * With a session cache, if the token currently held by this instance matches
+     * the one in the cache, its TTL is renewed and the session is left alive.
+     * If another process has replaced the cached token in the meantime, this
+     * instance's now-stale token is considered orphaned and logged out at the
+     * server, leaving the newer cached token intact.
+     *
      * @throws Exception In case of any error, an exception arises.
      */
     public function endCommunication(): void

@@ -48,11 +48,12 @@ class FileMakerLayout
      * By calling startCommunication() and endCommunication(), methods between them don't
      * log in and out every time, and it can expect faster operations.
      *
-     * When persistent sessions are not enabled, one authenticated session is kept during
-     * the current communication scope.
+     * Without a session cache, one authenticated session is kept for the duration of
+     * the current communication scope and discarded when endCommunication() is called.
      *
-     * When persistent sessions are enabled, the cached session token is reused if available.
-     * If there is no cached token, a new session is created and stored.
+     * With a session cache, the session token is persisted beyond the current communication
+     * scope and reused across requests. If no cached token is available, a new session is
+     * created and stored for future reuse.
      *
      * @throws Exception
      */
@@ -64,12 +65,12 @@ class FileMakerLayout
     /**
      * Finish a communication scope.
      *
-     * When persistent sessions are not enabled, the authenticated session for the current
-     * communication scope is ended and the server session is logged out.
+     * Without a session cache, the authenticated session for the current communication
+     * scope is ended and the server session is logged out.
      *
-     * When persistent sessions are enabled, the cached token is renewed if it still matches
-     * the token held by this instance. If another worker has replaced the cached token in
-     * the meantime, only this instance's (now-stale) token is logged out, leaving the
+     * With a session cache, the cached token's TTL is renewed if it still matches the
+     * token held by this instance. If another process has replaced the cached token in
+     * the meantime, only this instance's now-stale token is logged out, leaving the
      * newer cached token intact.
      *
      * @throws Exception
