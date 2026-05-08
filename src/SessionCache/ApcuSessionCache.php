@@ -14,7 +14,7 @@ use RuntimeException;
  *
  * APCu is not enabled by default on all PHP installations. This implementation
  * is provided as a default for those that have APCu enabled. If APCu is not
- * available, a custom implementation of {@see CacheInterface} should be used
+ * available, a custom implementation of {@see SessionCacheInterface} should be used
  * instead.
  *
  * As this cache stores sensitive FileMaker Data API session tokens, APCu is
