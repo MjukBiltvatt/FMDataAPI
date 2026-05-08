@@ -286,7 +286,9 @@ class CommunicationProvider
         $this->fmDataSource = $fmDataSource;
         $this->sessionCache = $sessionCache;
         $this->errorCode = -1;
-        $this->sessionCache->setCacheKey($this->cacheKey());
+        if ($this->sessionCache !== null) {
+            $this->sessionCache->setCacheKey($this->cacheKey());
+        }
     }
 
     /**
