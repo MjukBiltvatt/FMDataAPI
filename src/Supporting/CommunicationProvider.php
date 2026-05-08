@@ -5,7 +5,7 @@ namespace INTERMediator\FileMakerServer\RESTAPI\Supporting;
 use DateTime;
 use Exception;
 use CurlHandle;
-use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
+use INTERMediator\FileMakerServer\RESTAPI\SessionCache\AbstractSessionCache;
 
 /**
  * Class CommunicationProvider is for internal use to communicate with FileMaker Server.
@@ -229,10 +229,15 @@ class CommunicationProvider
     public bool $retryOnAccessTokenInvalidation = false;
 
     /**
-     * @var PersistentSessionStore|null
+     * @var AbstractSessionCache|null
      * @ignore
      */
-    public PersistentSessionStore|null $sessionStore = null;
+    public AbstractSessionCache|null $sessionCache = null;
+    /**
+     * @var string
+     * @ignore
+     */
+    public string $cacheKey;
 
     /**
      * CommunicationProvider constructor.
@@ -243,17 +248,17 @@ class CommunicationProvider
      * @param string|null $port
      * @param string|null $protocol
      * @param array|null $fmDataSource
-     * @param PersistentSessionStore|null $sessionStore
+     * @param AbstractSessionCache|null $sessionCache
      * @ignore
      */
-    public function __construct(string      $solution,
-                                string      $user,
-                                string      $password,
-                                string|null $host = null,
-                                string|null $port = null,
-                                string|null $protocol = null,
-                                array|null  $fmDataSource = null,
-                                PersistentSessionStore|null $sessionStore = null)
+    public function __construct(string                    $solution,
+                                string                    $user,
+                                string                    $password,
+                                string|null               $host = null,
+                                string|null               $port = null,
+                                string|null               $protocol = null,
+                                array|null                $fmDataSource = null,
+                                AbstractSessionCache|null $sessionCache = null)
     {
         $this->solution = rawurlencode($solution);
         $this->user = $user;
@@ -275,8 +280,9 @@ class CommunicationProvider
             }
         }
         $this->fmDataSource = $fmDataSource;
-        $this->sessionStore = $sessionStore;
+        $this->sessionCache = $sessionCache;
         $this->errorCode = -1;
+        $this->sessionCache->setCacheKey($this->cacheKey());
     }
 
     /**
@@ -302,12 +308,12 @@ class CommunicationProvider
     {
         $this->keepAuth = false;
 
-        if ($this->sessionStore !== null && $this->accessToken !== null) {
-            if ($this->sessionStore->get() === $this->accessToken) {
+        if ($this->sessionCache !== null && $this->accessToken !== null) {
+            if ($this->sessionCache->get() === $this->accessToken) {
                 // if the cache write fails, the token will expire naturally within 15 minutes.
                 // under sustained cache failures with high concurrency, orphaned tokens could
                 // approach FileMaker's session cap (error 953).
-                $this->sessionStore->set($this->accessToken); // renew TTL
+                $this->sessionCache->set($this->accessToken); // renew TTL
                 $this->accessToken = null;
                 return;
             }
@@ -545,8 +551,8 @@ class CommunicationProvider
             return true;
         }
 
-        if ($this->sessionStore !== null) {
-            $cached = $this->sessionStore->get();
+        if ($this->sessionCache !== null) {
+            $cached = $this->sessionCache->get();
             if ($cached !== null) {
                 $this->accessToken = $cached;
                 return true;
@@ -574,8 +580,8 @@ class CommunicationProvider
             $this->storeToProperties();
             if ($this->httpStatus == 200 && $this->errorCode == 0) {
                 $this->accessToken = $this->responseBody->response->token;
-                if ($this->sessionStore !== null) {
-                    $this->sessionStore->set($this->accessToken);
+                if ($this->sessionCache !== null) {
+                    $this->sessionCache->set($this->accessToken);
                 }
                 return true;
             }
@@ -603,7 +609,7 @@ class CommunicationProvider
         if ($this->accessToken === null) {
             return;
         }
-        if ($this->sessionStore !== null && $this->sessionStore->get() === $this->accessToken) {
+        if ($this->sessionCache !== null && $this->sessionCache->get() === $this->accessToken) {
             $this->accessToken = null;
             return;
         }
@@ -710,8 +716,8 @@ class CommunicationProvider
 
         // Token rejected by the server. Clear the cache before re-login so racing workers
         // don't re-adopt the dead token; preserve the in-process scope across the re-login.
-        if ($this->sessionStore !== null) {
-            $this->sessionStore->clear();
+        if ($this->sessionCache !== null) {
+            $this->sessionCache->delete();
         }
         $resumeScope = $this->keepAuth;
         $this->accessToken = null;
@@ -981,7 +987,7 @@ class CommunicationProvider
      */
     private function shouldRetryOnTokenError(): bool
     {
-        if ($this->sessionStore === null && !$this->retryOnAccessTokenInvalidation) {
+        if ($this->sessionCache === null && !$this->retryOnAccessTokenInvalidation) {
             return false;
         }
 
@@ -1087,5 +1093,20 @@ class CommunicationProvider
             curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
         }
         return $ch;
+    }
+
+    private function cacheKey(): string
+    {
+        $data = [
+            $this->url,
+            $this->solution,
+            (string)$this->port,
+            $this->host,
+            $this->protocol,
+        ];
+
+        $hash = hash('sha256', implode('', $data));
+
+        return "fm_token:$hash";
     }
 }

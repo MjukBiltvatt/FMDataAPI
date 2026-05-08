@@ -2,8 +2,7 @@
 
 namespace INTERMediator\FileMakerServer\RESTAPI;
 
-use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\PersistentSessionStore;
-use INTERMediator\FileMakerServer\RESTAPI\PersistentSession\SessionCacheInterface;
+use INTERMediator\FileMakerServer\RESTAPI\SessionCache\AbstractSessionCache;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\FileMakerLayout;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\FileMakerRelation;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\CommunicationProvider;
@@ -60,38 +59,30 @@ class FMDataAPI
      * Ex.  [{"database"=>"<databaseName>", "username"=>"<username>", "password"=>"<password>"}].
      * If you use OAuth, "oAuthRequestId" and "oAuthIdentifier" keys have to be specified.
      * @param boolean $isUnitTest If it's set to true, the communication provider just works locally.
-     * @param SessionCacheInterface|null $sessionCache Cache backend for persistent sessions.
+     * @param AbstractSessionCache|null $sessionCache Cache backend for persistent sessions.
      * This stores the authentication token used for persistent session reuse.
      * If omitted, persistent session caching is disabled and the library keeps the normal login/logout behavior.
      * If specified, the host is used as the token scope and startCommunication() / endCommunication()
      * will reuse session tokens between requests.
      */
-    public function __construct(string      $solution,
-                                string      $user,
-                                string|null $password,
-                                string|null $host = null,
-                                int|null    $port = null,
-                                string|null $protocol = null,
-                                array|null  $fmDataSource = null,
-                                bool        $isUnitTest = false,
-                                SessionCacheInterface|null $sessionCache = null)
+    public function __construct(string                    $solution,
+                                string                    $user,
+                                string|null               $password,
+                                string|null               $host = null,
+                                int|null                  $port = null,
+                                string|null               $protocol = null,
+                                array|null                $fmDataSource = null,
+                                bool                      $isUnitTest = false,
+                                AbstractSessionCache|null $sessionCache = null)
     {
         if (is_null($password)) {
             $password = "password"; // For testing purpose.
         }
 
-        $sessionStore = null;
-        if ($sessionCache !== null) {
-            $scope = ($host === 'localserver')
-                ? 'http://127.0.0.1:3000'
-                : sprintf('%s://%s:%d', $protocol ?? 'https', $host ?? '127.0.0.1', $port ?? 443);
-            $sessionStore = new PersistentSessionStore($sessionCache, $solution, $user, $scope);
-        }
-
         if (!$isUnitTest) {
-            $this->provider = new Supporting\CommunicationProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource, $sessionStore);
+            $this->provider = new Supporting\CommunicationProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource, $sessionCache);
         } else {
-            $this->provider = new Supporting\TestProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource, $sessionStore);
+            $this->provider = new Supporting\TestProvider($solution, $user, $password, $host, $port, $protocol, $fmDataSource, $sessionCache);
         }
     }
 
