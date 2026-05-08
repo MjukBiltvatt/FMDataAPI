@@ -149,7 +149,11 @@ class CommunicationProvider
      * @ignore
      */
     public bool $keepAuth = false;
-
+    /**
+     * @var bool
+     * @ignore
+     */
+    public bool $resumeScopeAfterReauth = false;
     /**
      * @var bool
      * @ignore
@@ -600,6 +604,10 @@ class CommunicationProvider
                 if ($this->sessionCache !== null) {
                     $this->sessionCache->set($this->accessToken);
                 }
+                if ($this->resumeScopeAfterReauth) {
+                    $this->keepAuth = true;
+                    $this->resumeScopeAfterReauth = false;
+                }
                 return true;
             }
         } catch (Exception $e) {
@@ -749,6 +757,10 @@ class CommunicationProvider
             }
         } catch (Exception $retry) {
             throw new Exception($retry->getMessage(), $retry->getCode(), $firstAttempt);
+        } finally {
+            if ($resumeScope) {
+                $this->resumeScopeAfterReauth = true;
+            }
         }
     }
 
