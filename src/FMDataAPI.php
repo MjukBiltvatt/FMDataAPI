@@ -482,9 +482,13 @@ class FMDataAPI
      * This default is sufficient for the vast majority of use cases. Only override
      * this if you have a specific reason to do so.
      * @param string $keyName The custom cache key name.
+     * @throws Exception If a session cache is not set, an exception is thrown.
      */
     public function setSessionCacheKeyName(string $keyName): void
     {
+        if ($this->provider->sessionCache === null) {
+            throw new Exception("setSessionCacheKeyName() requires a session cache to be configured via the constructor.");
+        }
         $this->provider->sessionCache->setCacheKey($keyName);
     }
 
@@ -499,9 +503,13 @@ class FMDataAPI
      * FileMaker Data API session timeout of 15 minutes to ensure the cached token is
      * invalidated before it expires on the FileMaker Server.
      * @param int $ttl Time-to-live in seconds. Defaults to 840 seconds (14 minutes).
+     * @throws Exception If a session cache is not set, an exception is thrown.
      */
     public function setSessionCacheTtl(int $ttl = 840): void
     {
+        if ($this->provider->sessionCache === null) {
+            throw new Exception("setSessionCacheTtl() requires a session cache to be configured via the constructor.");
+        }
         $this->provider->sessionCache->setTtl($ttl);
     }
 }
