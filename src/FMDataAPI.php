@@ -460,4 +460,44 @@ class FMDataAPI
     {
         $this->provider->retryOnAccessTokenInvalidation = $value;
     }
+
+    /**
+     * Overrides the cache key used to store the FileMaker Data API session token.
+     *
+     * WARNING: Setting an incorrect cache key can cause session tokens to be shared
+     * across users or applications, which is a serious security risk. Do not use
+     * this method unless you fully understand the implications.
+     *
+     * The default cache key is a hashed representation of the following values:
+     * - The host name
+     * - The port number
+     * - The protocol (http or https)
+     * - The solution name
+     * - The user
+     *
+     * This default is sufficient for the vast majority of use cases. Only override
+     * this if you have a specific reason to do so.
+     * @param string $keyName The custom cache key name.
+     */
+    public function setSessionCacheKeyName(string $keyName): void
+    {
+        $this->provider->sessionCache->setCacheKey($keyName);
+    }
+
+    /**
+     * Overrides the time-to-live (TTL) of the cached FileMaker Data API session token.
+     *
+     * WARNING: Setting a TTL that exceeds the FileMaker Data API session timeout (15 minutes)
+     * will cause the library to use expired tokens, resulting in authentication failures.
+     * Do not use this method unless you fully understand the implications.
+     *
+     * The default TTL is 840 seconds (14 minutes), intentionally set one minute below the
+     * FileMaker Data API session timeout of 15 minutes to ensure the cached token is
+     * invalidated before it expires on the FileMaker Server.
+     * @param int $ttl Time-to-live in seconds. Defaults to 840 seconds (14 minutes).
+     */
+    public function setSessionCacheTtl(int $ttl = 840): void
+    {
+        $this->provider->sessionCache->setTtl($ttl);
+    }
 }
