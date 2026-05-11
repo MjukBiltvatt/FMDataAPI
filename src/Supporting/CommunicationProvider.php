@@ -237,11 +237,6 @@ class CommunicationProvider
      * @ignore
      */
     public AbstractSessionCache|null $sessionCache = null;
-    /**
-     * @var string
-     * @ignore
-     */
-    public string $cacheKey;
 
     /**
      * CommunicationProvider constructor.
