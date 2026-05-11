@@ -330,6 +330,7 @@ class CommunicationProvider
     public function endCommunication(): void
     {
         $this->keepAuth = false;
+        $this->resumeScopeAfterReauth = false;
 
         if ($this->sessionCache !== null && $this->accessToken !== null) {
             if ($this->sessionCache->get() === $this->accessToken) {
