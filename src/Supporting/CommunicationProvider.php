@@ -1138,7 +1138,7 @@ class CommunicationProvider
             $this->protocol,
         ];
 
-        $hash = hash('sha256', implode('', $data));
+        $hash = hash('sha256', implode("\0", $data));
 
         return "fm_token_$hash";
     }
