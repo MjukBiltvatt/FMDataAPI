@@ -747,12 +747,14 @@ class CommunicationProvider
         $this->keepAuth = false;
         try {
             $reauthed = $this->login();
+            if (!$reauthed && $resumeScope) {
+                $this->resumeScopeAfterReauth = true;
+            }
         } catch (Exception $retry) {
-            throw new Exception($retry->getMessage(), $retry->getCode(), $firstAttempt);
-        } finally {
             if ($resumeScope) {
                 $this->resumeScopeAfterReauth = true;
             }
+            throw new Exception($retry->getMessage(), $retry->getCode(), $firstAttempt);
         }
         if ($reauthed) {
             if ($resumeScope) {
