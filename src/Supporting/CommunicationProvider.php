@@ -748,10 +748,11 @@ class CommunicationProvider
         try {
             $reauthed = $this->login();
         } catch (Exception $retry) {
+            throw new Exception($retry->getMessage(), $retry->getCode(), $firstAttempt);
+        } finally {
             if ($resumeScope) {
                 $this->resumeScopeAfterReauth = true;
             }
-            throw new Exception($retry->getMessage(), $retry->getCode(), $firstAttempt);
         }
         if ($reauthed) {
             if ($resumeScope) {
