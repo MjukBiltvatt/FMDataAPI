@@ -574,6 +574,10 @@ class CommunicationProvider
             $cached = $this->sessionCache->get();
             if ($cached !== null) {
                 $this->accessToken = $cached;
+                if ($this->resumeScopeAfterReauth) {
+                    $this->keepAuth = true;
+                    $this->resumeScopeAfterReauth = false;
+                }
                 return true;
             }
         }
