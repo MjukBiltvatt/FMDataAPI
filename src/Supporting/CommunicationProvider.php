@@ -747,19 +747,16 @@ class CommunicationProvider
         $this->keepAuth = false;
         try {
             $reauthed = $this->login();
-            if (!$reauthed && $resumeScope) {
-                $this->resumeScopeAfterReauth = true;
+            if ($reauthed) {
+                $this->keepAuth = $resumeScope;
+            } else {
+                $this->resumeScopeAfterReauth = $resumeScope;
             }
         } catch (Exception $retry) {
-            if ($resumeScope) {
-                $this->resumeScopeAfterReauth = true;
-            }
+            $this->resumeScopeAfterReauth = $resumeScope;
             throw new Exception($retry->getMessage(), $retry->getCode(), $firstAttempt);
         }
         if ($reauthed) {
-            if ($resumeScope) {
-                $this->keepAuth = true;
-            }
             try {
                 $this->callRestAPIWithoutRetry($params, $isAddToken, $method, $request, $addHeader, $isSystem, $directPath);
             } catch (Exception $retry) {
