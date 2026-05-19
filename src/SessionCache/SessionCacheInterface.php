@@ -9,7 +9,7 @@ namespace INTERMediator\FileMakerServer\RESTAPI\SessionCache;
  *
  * Implementations of this interface are used internally by the library to cache
  * FileMaker Data API session tokens. These tokens are sensitive credentials that
- * grant full access to the FileMaker Data API on behalf of the authenticated user.
+ * grant access to the FileMaker Data API on behalf of the authenticated user.
  * Implementors must ensure that cached values are stored securely and are not
  * accessible to unauthorized parties.
  *
@@ -37,8 +37,8 @@ interface SessionCacheInterface
      *
      * The value being stored is a sensitive FileMaker Data API session token.
      * Implementors must ensure this value is stored securely and protected from
-     * unauthorized access, as it grants full API access on behalf of the
-     * authenticated user.
+     * unauthorized access, as it grants access to the FileMaker Data API on behalf
+     * of the authenticated user.
      *
      * The cache key and TTL are managed internally by the library and set via
      * {@see AbstractSessionCache::setCacheKey()} and {@see AbstractSessionCache::setTtl()}
