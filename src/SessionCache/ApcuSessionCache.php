@@ -53,7 +53,7 @@ class ApcuSessionCache extends AbstractSessionCache
      */
     public function get(): string|null
     {
-        $value = apcu_fetch($this->cacheKey, $success);
+        $value = apcu_fetch($this->key, $success);
         return $success && is_string($value) ? $value : null;
     }
 
@@ -66,7 +66,7 @@ class ApcuSessionCache extends AbstractSessionCache
      */
     public function set(string $value): bool
     {
-        return apcu_store($this->cacheKey, $value, $this->ttl);
+        return apcu_store($this->key, $value, $this->ttl);
     }
 
     /**
@@ -78,6 +78,6 @@ class ApcuSessionCache extends AbstractSessionCache
      */
     public function delete(): bool
     {
-        return apcu_delete($this->cacheKey);
+        return apcu_delete($this->key);
     }
 }
