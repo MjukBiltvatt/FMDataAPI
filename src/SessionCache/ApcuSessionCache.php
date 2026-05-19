@@ -10,14 +10,12 @@ use RuntimeException;
  * APCu-based session cache implementation.
  *
  * Caches FileMaker Data API session tokens using APCu, which stores data in
- * shared memory on the server. Note that APCu cache is shared across all PHP
- * processes on the same server, so cache keys must be sufficiently unique to
- * avoid collisions between different users or applications.
+ * shared memory on the server. Note that depending on your setup APCu cache
+ * may be shared across PHP processes on the same server, so cache keys must be
+ * sufficiently unique to avoid collisions between different users and applications.
  *
- * APCu is not enabled by default on all PHP installations. This implementation
- * is provided as a default for those that have APCu enabled. If APCu is not
- * available, a custom extension of {@see AbstractSessionCache} should be used
- * instead.
+ * Requires that the APCu extension is installed and enabled. See the
+ * documentation here for more information: https://www.php.net/apcu
  *
  * As this cache stores sensitive FileMaker Data API session tokens, APCu is
  * only appropriate in environments where server memory access is properly
