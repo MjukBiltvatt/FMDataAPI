@@ -9,7 +9,7 @@
 namespace INTERMediator\FileMakerServer\RESTAPI\Supporting;
 
 use Exception;
-use INTERMediator\FileMakerServer\RESTAPI\SessionCache\AbstractSessionCache;
+use INTERMediator\FileMakerServer\RESTAPI\SessionCache\SessionCacheInterface;
 
 class TestProvider extends CommunicationProvider
 {
@@ -23,17 +23,17 @@ class TestProvider extends CommunicationProvider
      * @param string|null $port
      * @param string|null $protocol
      * @param array|null $fmDataSource
-     * @param AbstractSessionCache|null $sessionCache
+     * @param SessionCacheInterface|null $sessionCache
      * @ignore
      */
-    public function __construct(string                    $solution,
-                                string                    $user,
-                                string|null               $password,
-                                string|null               $host = null,
-                                string|null               $port = null,
-                                string|null               $protocol = null,
-                                array|null                $fmDataSource = null,
-                                AbstractSessionCache|null $sessionCache = null)
+    public function __construct(string                     $solution,
+                                string                     $user,
+                                string|null                $password,
+                                string|null                $host = null,
+                                string|null                $port = null,
+                                string|null                $protocol = null,
+                                array|null                 $fmDataSource = null,
+                                SessionCacheInterface|null $sessionCache = null)
     {
         parent::__construct($solution, $user, $password, $host, $port, $protocol, $fmDataSource, $sessionCache);
         $this->buildResponses();
