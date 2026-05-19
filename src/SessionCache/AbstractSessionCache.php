@@ -18,7 +18,7 @@ namespace INTERMediator\FileMakerServer\RESTAPI\SessionCache;
  *
  * To provide a custom cache backend, extend this class and implement
  * {@see SessionCacheInterface::get()}, {@see SessionCacheInterface::set()},
- * and {@see SessionCacheInterface::delete()}, using {@see self::$cacheKey}
+ * and {@see SessionCacheInterface::delete()}, using {@see self::$key}
  * and {@see self::$ttl} in your implementations.
  *
  * @see ApcuSessionCache for an example implementation using APCu.
@@ -36,7 +36,7 @@ abstract class AbstractSessionCache implements SessionCacheInterface
      * {@see SessionCacheInterface::get()}, {@see SessionCacheInterface::set()},
      * and {@see SessionCacheInterface::delete()} implementations.
      */
-    protected string $cacheKey;
+    protected string $key;
 
     /**
      * The time-to-live in seconds for cached session tokens.
@@ -63,7 +63,7 @@ abstract class AbstractSessionCache implements SessionCacheInterface
 
     final public function setKey(string $key): void
     {
-        $this->cacheKey = $key;
+        $this->key = $key;
     }
 
     final public function setTtl(int $ttl): void
