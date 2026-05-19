@@ -17,7 +17,9 @@ namespace INTERMediator\FileMakerServer\RESTAPI\SessionCache;
  * {@see AbstractSessionCache}, which provides the cache key and TTL management
  * required by this interface, and implement the three cache methods.
  *
- * @see AbstractSessionCache
+ * @see ApcuSessionCache for an example implementation using APCu.
+ * @see AbstractSessionCache for an easier way to implement session caching, but
+ * this interface is still useful for custom implementations.
  */
 interface SessionCacheInterface
 {
@@ -25,7 +27,7 @@ interface SessionCacheInterface
      * Retrieves the cached FileMaker Data API session token for the current session.
      *
      * The cache key is managed internally by the library and set via
-     * {@see AbstractSessionCache::setCacheKey()} prior to this method being called.
+     * {@see setKey()} prior to this method being called.
      *
      * @return string|null The cached session token, or null if no token exists
      *                     for the current key.
@@ -41,7 +43,7 @@ interface SessionCacheInterface
      * of the authenticated user.
      *
      * The cache key and TTL are managed internally by the library and set via
-     * {@see AbstractSessionCache::setCacheKey()} and {@see AbstractSessionCache::setTtl()}
+     * {@see setKey()} and {@see setTtl()}
      * prior to this method being called.
      *
      * @param string $value The FileMaker Data API session token to store.
@@ -54,9 +56,30 @@ interface SessionCacheInterface
      * Deletes the cached FileMaker Data API session token for the current session.
      *
      * The cache key is managed internally by the library and set via
-     * {@see AbstractSessionCache::setCacheKey()} prior to this method being called.
+     * {@see setKey()} prior to this method being called.
      *
      * @return bool True on success, false if the key did not exist or deletion failed.
      */
     public function delete(): bool;
+
+    /**
+     * Sets the cache key for the current session.
+     *
+     * This method is called internally by the library and should not be called
+     * manually. The key will not change during a single PHP request.
+     *
+     * @param string $key The cache key to use for subsequent cache operations.
+     */
+    public function setKey(string $key): void;
+
+
+    /**
+     * Sets the time-to-live for cached session tokens.
+     *
+     * This method is called internally by the library and should not be called
+     * manually. The TTL will not change during a single PHP request.
+     *
+     * @param int $ttl Time-to-live in seconds for the cached session token.
+     */
+    public function setTtl(int $ttl): void;
 }

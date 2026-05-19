@@ -5,7 +5,7 @@ namespace INTERMediator\FileMakerServer\RESTAPI\Supporting;
 use DateTime;
 use Exception;
 use CurlHandle;
-use INTERMediator\FileMakerServer\RESTAPI\SessionCache\AbstractSessionCache;
+use INTERMediator\FileMakerServer\RESTAPI\SessionCache\SessionCacheInterface;
 
 /**
  * Class CommunicationProvider is for internal use to communicate with FileMaker Server.
@@ -233,10 +233,10 @@ class CommunicationProvider
     public bool $retryOnAccessTokenInvalidation = false;
 
     /**
-     * @var AbstractSessionCache|null
+     * @var SessionCacheInterface|null
      * @ignore
      */
-    public AbstractSessionCache|null $sessionCache = null;
+    public SessionCacheInterface|null $sessionCache = null;
 
     /**
      * CommunicationProvider constructor.
@@ -247,17 +247,17 @@ class CommunicationProvider
      * @param string|null $port
      * @param string|null $protocol
      * @param array|null $fmDataSource
-     * @param AbstractSessionCache|null $sessionCache
+     * @param SessionCacheInterface|null $sessionCache
      * @ignore
      */
-    public function __construct(string                    $solution,
-                                string                    $user,
-                                string                    $password,
-                                string|null               $host = null,
-                                string|null               $port = null,
-                                string|null               $protocol = null,
-                                array|null                $fmDataSource = null,
-                                AbstractSessionCache|null $sessionCache = null)
+    public function __construct(string                     $solution,
+                                string                     $user,
+                                string                     $password,
+                                string|null                $host = null,
+                                string|null                $port = null,
+                                string|null                $protocol = null,
+                                array|null                 $fmDataSource = null,
+                                SessionCacheInterface|null $sessionCache = null)
     {
         $this->solution = rawurlencode($solution);
         $this->user = $user;
@@ -282,7 +282,7 @@ class CommunicationProvider
         $this->sessionCache = $sessionCache;
         $this->errorCode = -1;
         if ($this->sessionCache !== null) {
-            $this->sessionCache->setCacheKey($this->cacheKey());
+            $this->sessionCache->setKey($this->cacheKey());
         }
     }
 

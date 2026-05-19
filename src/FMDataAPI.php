@@ -2,7 +2,7 @@
 
 namespace INTERMediator\FileMakerServer\RESTAPI;
 
-use INTERMediator\FileMakerServer\RESTAPI\SessionCache\AbstractSessionCache;
+use INTERMediator\FileMakerServer\RESTAPI\SessionCache\SessionCacheInterface;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\FileMakerLayout;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\FileMakerRelation;
 use INTERMediator\FileMakerServer\RESTAPI\Supporting\CommunicationProvider;
@@ -59,7 +59,7 @@ class FMDataAPI
      * Ex.  [{"database"=>"<databaseName>", "username"=>"<username>", "password"=>"<password>"}].
      * If you use OAuth, "oAuthRequestId" and "oAuthIdentifier" keys have to be specified.
      * @param boolean $isUnitTest If it's set to true, the communication provider just works locally.
-     * @param AbstractSessionCache|null $sessionCache Cache backend for persistent sessions.
+     * @param SessionCacheInterface|null $sessionCache Cache backend for persistent sessions.
      * If omitted, the library logs in and out on every database operation, or once
      * per communication scope when using startCommunication() / endCommunication().
      * If specified, session tokens are persisted and reused across requests via
@@ -68,15 +68,15 @@ class FMDataAPI
      * automatically set to true, ensuring the library re-authenticates and retries the request if
      * the cached token has expired on the FileMaker Server.
      */
-    public function __construct(string                    $solution,
-                                string                    $user,
-                                string|null               $password,
-                                string|null               $host = null,
-                                int|null                  $port = null,
-                                string|null               $protocol = null,
-                                array|null                $fmDataSource = null,
-                                bool                      $isUnitTest = false,
-                                AbstractSessionCache|null $sessionCache = null)
+    public function __construct(string                     $solution,
+                                string                     $user,
+                                string|null                $password,
+                                string|null                $host = null,
+                                int|null                   $port = null,
+                                string|null                $protocol = null,
+                                array|null                 $fmDataSource = null,
+                                bool                       $isUnitTest = false,
+                                SessionCacheInterface|null $sessionCache = null)
     {
         if (is_null($password)) {
             $password = "password"; // For testing purpose.
@@ -463,33 +463,6 @@ class FMDataAPI
     public function setRetryOnAccessTokenInvalidation(bool $value = true): void
     {
         $this->provider->retryOnAccessTokenInvalidation = $value;
-    }
-
-    /**
-     * Overrides the cache key used to store the FileMaker Data API session token.
-     *
-     * WARNING: Setting an incorrect cache key can cause session tokens to be shared
-     * across users or applications, which is a serious security risk. Do not use
-     * this method unless you fully understand the implications.
-     *
-     * The default cache key is a hashed representation of the following values:
-     * - The host name
-     * - The port number
-     * - The protocol (http or https)
-     * - The solution name
-     * - The user
-     *
-     * This default is sufficient for the vast majority of use cases. Only override
-     * this if you have a specific reason to do so.
-     * @param string $keyName The custom cache key name.
-     * @throws Exception If a session cache is not set, an exception is thrown.
-     */
-    public function setSessionCacheKeyName(string $keyName): void
-    {
-        if ($this->provider->sessionCache === null) {
-            throw new Exception("setSessionCacheKeyName() requires a session cache to be configured via the constructor.");
-        }
-        $this->provider->sessionCache->setCacheKey($keyName);
     }
 
     /**

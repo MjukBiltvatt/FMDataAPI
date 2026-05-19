@@ -21,34 +21,16 @@ namespace INTERMediator\FileMakerServer\RESTAPI\SessionCache;
  * and {@see SessionCacheInterface::delete()}, using {@see self::$cacheKey}
  * and {@see self::$ttl} in your implementations.
  *
- * Example:
- *
- *     class RedisSessionCache extends AbstractSessionCache
- *     {
- *         public function get(): ?string
- *         {
- *             return $this->redis->get($this->cacheKey) ?? null;
- *         }
- *
- *         public function set(string $value): bool
- *         {
- *             return $this->redis->setex($this->cacheKey, $this->ttl, $value);
- *         }
- *
- *         public function delete(): bool
- *         {
- *             return $this->redis->del($this->cacheKey) > 0;
- *         }
- *     }
- *
- * @see SessionCacheInterface
+ * @see ApcuSessionCache for an example implementation using APCu.
+ * @see SessionCacheInterface for an alternative way to implement session caching without
+ * extending this class.
  */
 abstract class AbstractSessionCache implements SessionCacheInterface
 {
     /**
      * The cache key for the current session.
      *
-     * Always set by the library via {@see self::setCacheKey()} before any cache
+     * Always set by the library via {@see SessionCacheInterface::setKey()} before any cache
      * operation is performed. Will not change during a single PHP request.
      * Implementing classes should use this property directly in their
      * {@see SessionCacheInterface::get()}, {@see SessionCacheInterface::set()},
@@ -59,7 +41,7 @@ abstract class AbstractSessionCache implements SessionCacheInterface
     /**
      * The time-to-live in seconds for cached session tokens.
      *
-     * Set by the library via {@see self::setTtl()} before any cache operation
+     * Set by the library via {@see SessionCacheInterface::setTtl()} before any cache operation
      * is performed, defaulting to the value provided at construction time.
      * Will not change during a single PHP request. Implementing classes should
      * use this property directly in their {@see SessionCacheInterface::set()} implementation.
@@ -79,27 +61,11 @@ abstract class AbstractSessionCache implements SessionCacheInterface
         $this->ttl = $defaultTtl;
     }
 
-    /**
-     * Sets the cache key for the current session.
-     *
-     * This method is called internally by the library and should not be called
-     * manually. The key will not change during a single PHP request.
-     *
-     * @param string $key The cache key to use for subsequent cache operations.
-     */
-    final public function setCacheKey(string $key): void
+    final public function setKey(string $key): void
     {
         $this->cacheKey = $key;
     }
 
-    /**
-     * Sets the time-to-live for cached session tokens.
-     *
-     * This method is called internally by the library and should not be called
-     * manually. The TTL will not change during a single PHP request.
-     *
-     * @param int $ttl Time-to-live in seconds for the cached session token.
-     */
     final public function setTtl(int $ttl): void
     {
         $this->ttl = $ttl;
